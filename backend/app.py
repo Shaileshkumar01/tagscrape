@@ -1,8 +1,9 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from db import get_db_connection, save_scrape_results
+from db import get_db_connection, save_scrape_results, get_scrape_history, get_scrape_details
 from scraper import scrape_website
 from auth import login_user
+
 
 app = Flask(__name__)
 CORS(app)
@@ -46,5 +47,19 @@ def login():
         return jsonify({'message':error}),401
     return jsonify({'token':token}),200
 
+@app.route('/api/history', methods=['GET'])
+def history():
+    data=get_scrape_history()
+    return jsonify(data),200
+
+@app.route('/api/scrape/<int:run_id>', methods=['GET'])
+def get_past_scrape(run_id):
+    data=get_scrape_details(run_id)
+    if not data:
+        return jsonify({'message':'Run not found'}), 404
+    return jsonify(data), 200
+
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
+
+

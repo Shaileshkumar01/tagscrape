@@ -1,3 +1,4 @@
+from os import truncate
 import os
 import mysql.connector
 from dotenv import load_dotenv
@@ -71,3 +72,50 @@ def save_scrape_results(url,data):
     finally:
             cursor.close()
             conn.close()
+
+
+
+def get_scrape_history():
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+        SELECT sr.id, w.url, sr.status, sr.started_at FROM scrape_runs sr JOIN websites w ON sr.website_id= w.id ORDER BY sr.started_at DESC LIMIT 10
+        """
+        cursor.execute(query)
+        result = cursor.fetchall()
+        return result
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+def get_scrape_details(run_id):
+    conn=get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT w.url FROM scrape_runs sr JOIN websites w ON sr.website_id = w.id WHERE sr.id = %s", (run_id,))
+        run_info=cursor.fetchone()
+        if not run_info:
+            return None
+
+        cursor.execute("SELECT tag_name, content FROM scraped_tags WHERE scrape_run_id = %s", (run_id,))
+        tags=cursor.fetchall()
+        results={
+            'title':run_info['url'],
+        
+            'meta_title':next((t['content'] for t in tags if t['tag_name'] =='meta_title'),None),
+            'meta_description':next((t['content'] for t in tags if t['tag_name'] =='meta_description'),None),
+            'meta_keywords':next((t['content'] for t in tags if t['tag_name'] =='meta_keywords'),None),
+            'headings':{'h1':[t['content'] for t in tags if t['tag_name']=='h1']}
+            
+        }
+        return results
+    finally:
+        cursor.close()
+        conn.close()

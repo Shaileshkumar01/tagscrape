@@ -1,6 +1,7 @@
 import { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authcontext";
+import { useEffect } from "react";
 
 export default function Dashboard() {
     const { logout } = useContext(AuthContext);
@@ -9,6 +10,38 @@ export default function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [results, setResults] = useState(null);
     const [error, setError] = useState('');
+    const [history, setHistory] = useState([]);
+
+    const fetchHistory = async () => {
+        try {
+            const response = await fetch('http://127.0.0.1:5000/api/history');
+            if (response.ok) {
+                const data = await response.json();
+                setHistory(data);
+
+            }
+        }
+        catch (err) {
+            console.error('failed to fetch history:', err);
+        }
+    };
+
+
+    const handleRowClick = async (runId) => {
+        try {
+            const response = await fetch(`http://127.0.0.1:5000/api/scrape/${runId}`);
+            if (response.ok) {
+                const data = await response.json();
+                setResults(data);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+        catch (err) {
+            console.error('failed to fetch details', err);
+        }
+    }
+
+
     const handleLogout = () => {
         logout();
         navigate('/login');
@@ -18,6 +51,7 @@ export default function Dashboard() {
         e.preventDefault();
         setError('');
         setResults(null);
+        fetchHistory()
         setLoading(true);
         try {
             const response = await fetch('http://127.0.0.1:5000/api/scrape', {
@@ -40,6 +74,10 @@ export default function Dashboard() {
             setLoading(false);
         }
     }
+
+    useEffect(() => {
+        fetchHistory();
+    }, []);
 
     return (
         <div style={{ maxwidth: '800px', margin: '50px auto', fontFamily: 'sans-serif' }}>
@@ -84,6 +122,36 @@ export default function Dashboard() {
 
 
             )}
+
+
+            <div style={{ marginTop: '40px' }}>
+                <h2>Scrape History</h2>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+                    <thead>
+                        <tr style={{ background: '#f2f2f2' }}>
+                            <th style={{ padding: '12px', border: '1px solid#ddd', textAlign: 'left' }}>ID</th>
+                            <th style={{ padding: '12px', border: '1px solid#ddd', textAlign: 'left' }}>URL</th>
+                            <th style={{ padding: '12px', border: '1px solid#ddd', textAlign: 'left' }}>Status</th>
+                            <th style={{ padding: '12px', border: '1px solid#ddd', textAlign: 'left' }}>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {history.length > 0 ? history.map((run) => (<tr key={run.id} onClick={() => handleRowClick(run.id)} style={{ backgroundColor: '#fff', borderBottom: '1px solid #ddd', cursor: 'pointer' }}>
+                            <td style={{ padding: '12px', border: '1px solid#ddd' }}>{run.id}</td>
+                            <td style={{ padding: '12px', border: '1px solid#ddd' }}>{run.url}</td>
+                            <td style={{ padding: '12px', border: '1px solid#ddd', color: run.status === 'completed' ? 'green' : 'orange' }}>{run.status}</td>
+
+                            <td style={{ padding: '12px', border: '1px solid#ddd' }}>{new Date(run.started_at).toLocaleDateString()}</td>
+                        </tr>))
+                            : (
+                                <tr>
+                                    <td colSpan="4" style={{ padding: '12px', border: '1px solid#ddd', textAlign: 'center' }}>No history found</td>
+                                </tr>
+                            )}
+                    </tbody>
+                </table>
+            </div>
+
         </div>
 
     )
