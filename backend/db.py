@@ -2,6 +2,7 @@ from os import truncate
 import os
 import mysql.connector
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash
 
 load_dotenv()
 
@@ -116,6 +117,92 @@ def get_scrape_details(run_id):
             
         }
         return results
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+def get_all_users():
+    conn =get_db_connection()
+    if not conn:
+        return[]
+    try:
+        cursor=conn.cursor(dictionary=True)
+        cursor.execute("SELECT u.id, u.email, r.name as role, u.created_at FROM users u JOIN roles r ON u.role_id = r.id ORDER BY u.created_at DESC")
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+def create_new_user(email, password, role_id=3):
+    conn = get_db_connection()
+    if not conn:
+        return False, "database error"
+    try:
+        cursor=conn.cursor()
+        hashed_password = generate_password_hash(password)
+        name_part = email.split('@')[0]
+        cursor.execute("INSERT INTO users (name, email, password_hash, role_id, is_active) VALUES (%s, %s, %s, %s, 1)",(name_part, email, hashed_password, role_id))
+        conn.commit()
+        return True, "User created successfully"
+    except mysql.connector.Error as err:
+        return False, f"Failed to create user: {err}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def delete_user_by_id(user_id):
+    conn = get_db_connection()
+    if not conn:
+        return False, "database error"
+    try:
+        cursor=conn.cursor()
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+        return True, "uer deleted successfully"
+    except mysql.connector.Error as err:
+        return False, f"failes to delete user: {str(err)}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_unique_sites():
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM websites ORDER BY created_at DESC")
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_scrapes_for_site(website_id):
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, status, started_at FROM scrape_runs WHERE website_id = %s ORDER BY started_at DESC", (website_id,))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+def delete_site_by_id(website_id):
+    conn = get_db_connection()
+    if not conn: return False, "Database error"
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM websites WHERE id = %s", (website_id,))
+        conn.commit()
+        return True, "Site deleted successfully"
+    except mysql.connector.Error as err:
+        return False, f"Failed to delete site: {err}"
     finally:
         cursor.close()
         conn.close()
