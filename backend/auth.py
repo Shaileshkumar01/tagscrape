@@ -2,6 +2,7 @@ import jwt
 import os
 from datetime import datetime, timedelta
 from db import get_db_connection
+from werkzeug.security import check_password_hash
 def login_user(email, password):
     conn =get_db_connection()
     if not conn:
@@ -10,8 +11,17 @@ def login_user(email, password):
         cursor=conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
         user =cursor.fetchone()
-        if user and user['password_hash']==password:
-            payload ={
+        if user:
+            is_valid = False
+            # If it's a new hashed password
+            if user['password_hash'].startswith('scrypt:') or user['password_hash'].startswith('pbkdf2:'):
+                is_valid = check_password_hash(user['password_hash'], password)
+            else:
+                # Fallback for old manually created users
+                is_valid = (user['password_hash'] == password)
+                
+            if is_valid:
+                payload ={
                 'user_id':user['id'],
                 'role_id':user['role_id'],
                 'email':user['email'],
