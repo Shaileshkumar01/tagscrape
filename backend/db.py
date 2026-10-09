@@ -1,3 +1,4 @@
+from mysql.connector import cursor
 from os import truncate
 import os
 import mysql.connector
@@ -203,6 +204,61 @@ def delete_site_by_id(website_id):
         return True, "Site deleted successfully"
     except mysql.connector.Error as err:
         return False, f"Failed to delete site: {err}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+def check_if_data_changed(url, new_data):
+    conn = get_db_connection()
+    if not conn: return True
+    try:
+        cursor=conn.cursor(dictionary=True)
+        cursor.execute("""SELECT sr.id FROM scrape_runs sr 
+        JOIN websites w ON sr.website_id = w.id 
+        WHERE w.url = %s ORDER BY sr.started_at DESC LIMIT 1""",(url,))
+        latest_run=cursor.fetchone()
+        if not latest_run:
+            return True
+        run_id=latest_run['id']
+        cursor.execute("SELECT tag_name, content FROM scraped_tags WHERE scrape_run_id = %s",(run_id,))
+        tags=cursor.fetchall()
+        old_data={
+            'title': next((t['content'] for t in tags if t['tag_name']=='title'), None),
+            'meta_title': next((t['content'] for t in tags if t['tag_name']=='meta_title'), None),
+            'meta_description': next((t['content'] for t in tags if t['tag_name']=='meta_description'), None),
+            'meta_keywords': next((t['content'] for t in tags if t['tag_name']=='meta_keywords'), None),
+            'headings': {'h1':[t['content'] for t in tags if t['tag_name']=='h1']}
+        }
+        
+        if old_data['title'] != new_data.get('title'): return True
+        if old_data['meta_title']!=new_data.get('meta_title'): return True
+        if old_data['meta_description']!=new_data.get('meta_description'): return True
+        if old_data['meta_keywords']!=new_data.get('meta_keywords'): return True
+
+        old_h1s = old_data['headings'].get('h1',[])
+        new_h1s= new_data.get('headings',{}).get('h1',[])
+        if sorted(old_h1s)!=sorted(new_h1s): return True
+
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+def update_user_password(user_id, new_password):
+    conn=get_db_connection()
+    if not conn: return False, "database error"
+    try:
+        cursor=conn.cursor()
+        hashed_password=generate_password_hash(new_password)
+        cursor.execute("UPDATE users SET password_hash = %s WHERE id = %s",(hashed_password, user_id))
+        conn.commit()
+        return True, "Password updated successfully"
+    except mysql.connector.Error as err:
+        return False, f"Failed to update password: {err}"
     finally:
         cursor.close()
         conn.close()
