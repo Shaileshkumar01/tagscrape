@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { formatDateOnly } from '../utils/date';
+import { API_BASE_URL } from '../config';
 
 export default function Admin() {
     const [users, setUsers] = useState([]);
@@ -7,11 +9,13 @@ export default function Admin() {
     const [password, setPassword] = useState('');
     const [roleId, setRoleId] = useState(3);
     const [message, setMessage] = useState('');
+    const [intervalHours, setIntervalHours] = useState(24);
+    const [cronMessage, setCronMessage] = useState('');
     const navigate = useNavigate();
 
     const fetchUsers = async () => {
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/users');
+            const response = await fetch(`${API_BASE_URL}/api/users`);
             if (response.ok) {
                 const data = await response.json();
                 setUsers(data);
@@ -21,15 +25,28 @@ export default function Admin() {
         }
     };
 
+    const fetchCron = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/cron`);
+            if (response.ok) {
+                const data = await response.json();
+                setIntervalHours(data.interval_hours);
+            }
+        } catch (err) {
+            console.error('Failed to fetch cron settings', err);
+        }
+    };
+
     useEffect(() => {
         fetchUsers();
+        fetchCron();
     }, []);
 
     const handleCreateUser = async (e) => {
         e.preventDefault();
         try {
             const response = await fetch(
-                'http://127.0.0.1:5000/api/users',
+                `${API_BASE_URL}/api/users`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -54,7 +71,7 @@ export default function Admin() {
     const handleDeleteUser = async (id) => {
         if (!window.confirm("Are you sure you want to delete this user?")) return;
         try {
-            const response = await fetch(`http://127.0.0.1:5000/api/users/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/api/users/${id}`, {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -72,7 +89,7 @@ export default function Admin() {
         const newPassword = window.prompt("enter new password for this user");
         if (!newPassword) return;
         try {
-            const response = await fetch(`http://127.0.0.1:5000/api/users/${id}/password`, {
+            const response = await fetch(`${API_BASE_URL}/api/users/${id}/password`, {
                 method: "PUT",
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password: newPassword })
@@ -86,6 +103,26 @@ export default function Admin() {
         }
         catch (err) {
             alert('error updating password');
+        }
+    };
+
+    const handleUpdateCron = async (e) => {
+        e.preventDefault();
+        setCronMessage('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/cron`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interval_hours: Number(intervalHours) })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setCronMessage(data.message || 'Schedule updated successfully!');
+            } else {
+                setCronMessage(data.message || 'Failed to update schedule');
+            }
+        } catch (err) {
+            setCronMessage('Failed to connect to backend.');
         }
     };
 
@@ -142,6 +179,30 @@ export default function Admin() {
             </div>
 
             <div className="card fade-in">
+                <h3 className="card-title">Automated Scraping Schedule</h3>
+                <p className="text-muted mb-4">Set how frequently background cron runs automatically to check all tracked websites for changes.</p>
+
+                <form onSubmit={handleUpdateCron} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <label style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Run every:</label>
+                    <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        value={intervalHours}
+                        onChange={e => setIntervalHours(e.target.value)}
+                        required
+                        className="form-input"
+                        style={{ width: '120px' }}
+                    />
+                    <span style={{ color: 'var(--text-muted)' }}>hours</span>
+                    <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px' }}>
+                        Save Schedule
+                    </button>
+                </form>
+                {cronMessage && <p className={`mt-4 ${cronMessage.includes('successfully') ? 'text-success' : 'text-danger'}`}>{cronMessage}</p>}
+            </div>
+
+            <div className="card fade-in">
                 <h3 className="card-title">User Directory</h3>
                 <p className="text-muted mb-4">All registered users in the system.</p>
 
@@ -166,7 +227,7 @@ export default function Admin() {
                                             {user.role ? user.role.toUpperCase() : 'UNKNOWN'}
                                         </span>
                                     </td>
-                                    <td className="text-muted">{new Date(user.created_at.replace('GMT', '')).toLocaleDateString()}</td>
+                                    <td className="text-muted">{formatDateOnly(user.created_at)}</td>
                                     <td>
                                         {user.role === 'super_admin' ? (
                                             <span className="text-muted" style={{ fontStyle: 'italic', fontSize: '14px' }}>Cannot Delete</span>

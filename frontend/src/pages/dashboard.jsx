@@ -1,6 +1,8 @@
 import { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authcontext";
+import { formatDateTime, formatDateOnly } from "../utils/date";
+import { API_BASE_URL } from "../config";
 
 export default function Dashboard() {
     const { logout, roleId } = useContext(AuthContext);
@@ -16,7 +18,7 @@ export default function Dashboard() {
 
     const fetchSites = async () => {
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/sites');
+            const response = await fetch(`${API_BASE_URL}/api/sites`);
             if (response.ok) {
                 const data = await response.json();
                 setSites(data);
@@ -30,7 +32,7 @@ export default function Dashboard() {
         setSelectedSite(site);
         setResults(null);
         try {
-            const response = await fetch(`http://127.0.0.1:5000/api/sites/${site.id}/scrapes`);
+            const response = await fetch(`${API_BASE_URL}/api/sites/${site.id}/scrapes`);
             if (response.ok) {
                 const data = await response.json();
                 setSiteScrapes(data);
@@ -42,7 +44,7 @@ export default function Dashboard() {
 
     const handleRunClick = async (runId) => {
         try {
-            const response = await fetch(`http://127.0.0.1:5000/api/scrape/${runId}`);
+            const response = await fetch(`${API_BASE_URL}/api/scrape/${runId}`);
             if (response.ok) {
                 const data = await response.json();
                 setResults(data);
@@ -63,7 +65,7 @@ export default function Dashboard() {
         if (!window.confirm("Are you sure you want to delete this site and all its history?")) return;
 
         try {
-            const response = await fetch(`http://127.0.0.1:5000/api/sites/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/api/sites/${id}`, {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -92,7 +94,7 @@ export default function Dashboard() {
         setResults(null);
         setLoading(true);
         try {
-            const response = await fetch('http://127.0.0.1:5000/api/scrape', {
+            const response = await fetch(`${API_BASE_URL}/api/scrape`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url })
@@ -181,7 +183,7 @@ export default function Dashboard() {
                                         <td>
                                             <a href={site.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{site.url}</a>
                                         </td>
-                                        <td className="text-muted">{new Date(site.created_at.replace('GMT', '')).toLocaleDateString()}</td>
+                                        <td className="text-muted">{formatDateOnly(site.created_at)}</td>
                                         <td>
                                             {(roleId === 1 || roleId === 2) ? (
                                                 <button onClick={(e) => handleDeleteSite(e, site.id)} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }}>Delete</button>
@@ -243,7 +245,7 @@ export default function Dashboard() {
                                                     </span>
                                                 </td>
                                                 <td className="text-muted" style={{ fontSize: '13px' }}>
-                                                    {new Date(run.started_at.replace('GMT', '')).toLocaleString()}
+                                                    {formatDateTime(run.started_at)}
                                                 </td>
                                             </tr>
                                         )) : (
