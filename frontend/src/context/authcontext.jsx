@@ -5,14 +5,25 @@ export const AuthContext = createContext()
 export const AuthProvider = ({ children }) => {
     const [token, setToken] = useState(null);
     const [roleId, setRoleId] = useState(null);
+    const [loading, setLoading] = useState(true);
 
     const parseAndSetToken = (t) => {
-        setToken(t);
         try {
             const payload = JSON.parse(atob(t.split('.')[1]));
+            if (payload.exp && Date.now() >= payload.exp * 1000) {
+                setToken(null);
+                setRoleId(null);
+                localStorage.removeItem('token');
+                return false;
+            }
+            setToken(t);
             setRoleId(payload.role_id);
+            return true;
         } catch (err) {
+            setToken(null);
             setRoleId(null);
+            localStorage.removeItem('token');
+            return false;
         }
     };
 
@@ -21,6 +32,7 @@ export const AuthProvider = ({ children }) => {
         if (savedToken) {
             parseAndSetToken(savedToken);
         }
+        setLoading(false);
     }, []);
 
     const login = (newToken) => {
@@ -35,7 +47,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ token, roleId, login, logout }}>
+        <AuthContext.Provider value={{ token, roleId, loading, login, logout }}>
             {children}
         </AuthContext.Provider>
     );
