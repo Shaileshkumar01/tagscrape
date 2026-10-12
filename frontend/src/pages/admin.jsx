@@ -212,7 +212,7 @@ export default function Admin() {
                         className="btn btn-secondary"
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                        {triggering ? '⏳ Scraping All Sites...' : '⚡ Run Scraping Now'}
+                        {triggering ? 'Scraping All Sites...' : 'Run Scraping Now'}
                     </button>
                 </div>
 
