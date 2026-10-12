@@ -3,7 +3,9 @@ from flask_cors import CORS
 from db import get_db_connection, save_scrape_results, get_scrape_history, get_scrape_details, get_all_users, create_new_user, delete_user_by_id, get_unique_sites, get_scrapes_for_site, delete_site_by_id, check_if_data_changed, update_user_password
 from scraper import scrape_website
 from auth import login_user
-
+import json
+import os
+from apscheduler.schedulers.background import BackgroundScheduler 
 
 
 app = Flask(__name__)
@@ -126,7 +128,49 @@ def update_password(user_id):
 
 
 
+CONFIG_FILE = 'config.json'
+
+def get_interval():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f).get('interval_hours', 24)
+    return 24
+
+def scheduled_scraping():
+    print("Cron Job Triggered: Scraping all websites...")
+    sites = get_unique_sites()
+    for site in sites:
+        url = site['url']
+        scraped_data, error = scrape_website(url)
+        if not error:
+            if check_if_data_changed(url, scraped_data):
+                save_scrape_results(url, scraped_data)
+                print(f"Cron: Saved updates for {url}")
+            else:
+                print(f"Cron: No changes for {url}")
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=scheduled_scraping, trigger="interval", hours=get_interval(), id='scrape_job')
+scheduler.start()
+
+@app.route('/api/cron', methods=['GET'])
+def get_cron():
+    return jsonify({'interval_hours': get_interval()}), 200
+
+@app.route('/api/cron', methods=['POST'])
+def update_cron():
+    data = request.get_json()
+    hours = int(data.get('interval_hours', 24))
+    
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump({'interval_hours': hours}, f)
+        
+    scheduler.reschedule_job('scrape_job', trigger='interval', hours=hours)
+    
+    return jsonify({'message': f'Cron updated successfully! It will now auto-scrape every {hours} hours.'}), 200
+
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 
 
