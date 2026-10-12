@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/authcontext';
 import { API_BASE_URL } from '../config';
@@ -8,7 +8,13 @@ export default function Login() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
-    const { login } = useContext(AuthContext);
+    const { login, token, loading } = useContext(AuthContext);
+
+    useEffect(() => {
+        if (!loading && token) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [token, loading, navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
