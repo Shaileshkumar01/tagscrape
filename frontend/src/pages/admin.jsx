@@ -11,6 +11,7 @@ export default function Admin() {
     const [message, setMessage] = useState('');
     const [intervalHours, setIntervalHours] = useState(24);
     const [cronMessage, setCronMessage] = useState('');
+    const [triggering, setTriggering] = useState(false);
     const navigate = useNavigate();
 
     const fetchUsers = async () => {
@@ -126,6 +127,26 @@ export default function Admin() {
         }
     };
 
+    const handleTriggerCron = async () => {
+        setTriggering(true);
+        setCronMessage('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/cron/trigger`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setCronMessage(data.message || 'Scraping triggered successfully!');
+            } else {
+                setCronMessage(data.message || 'Failed to trigger scraping');
+            }
+        } catch (err) {
+            setCronMessage('Failed to connect to backend.');
+        } finally {
+            setTriggering(false);
+        }
+    };
+
     return (
         <div className="container fade-in">
             <div className="header">
@@ -179,8 +200,21 @@ export default function Admin() {
             </div>
 
             <div className="card fade-in">
-                <h3 className="card-title">Automated Scraping Schedule</h3>
-                <p className="text-muted mb-4">Set how frequently background cron runs automatically to check all tracked websites for changes.</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
+                    <div>
+                        <h3 className="card-title" style={{ marginBottom: '4px' }}>Automated Scraping Schedule</h3>
+                        <p className="text-muted" style={{ margin: 0 }}>Set how frequently background cron runs automatically to check all tracked websites for changes.</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleTriggerCron}
+                        disabled={triggering}
+                        className="btn btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        {triggering ? '⏳ Scraping All Sites...' : '⚡ Run Scraping Now'}
+                    </button>
+                </div>
 
                 <form onSubmit={handleUpdateCron} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <label style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Run every:</label>
@@ -199,7 +233,7 @@ export default function Admin() {
                         Save Schedule
                     </button>
                 </form>
-                {cronMessage && <p className={`mt-4 ${cronMessage.includes('successfully') ? 'text-success' : 'text-danger'}`}>{cronMessage}</p>}
+                {cronMessage && <p className={`mt-4 ${cronMessage.includes('successfully') || cronMessage.includes('completed') ? 'text-success' : 'text-danger'}`}>{cronMessage}</p>}
             </div>
 
             <div className="card fade-in">

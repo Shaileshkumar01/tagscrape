@@ -137,17 +137,40 @@ def get_interval():
     return 24
 
 def scheduled_scraping():
-    print("Cron Job Triggered: Scraping all websites...")
+    print("--------------------------------------------------", flush=True)
+    print("⏰ [CRON JOB] Starting automated scrape cycle...", flush=True)
     sites = get_unique_sites()
+    print(f"⏰ [CRON JOB] Found {len(sites)} website(s) to check.", flush=True)
+    
+    updated = 0
+    unchanged = 0
+    errors = 0
+
     for site in sites:
         url = site['url']
+        print(f"⏰ Checking: {url}", flush=True)
         scraped_data, error = scrape_website(url)
-        if not error:
-            if check_if_data_changed(url, scraped_data):
-                save_scrape_results(url, scraped_data)
-                print(f"Cron: Saved updates for {url}")
+        if error:
+            print(f"❌ Error scraping {url}: {error}", flush=True)
+            errors += 1
+            continue
+
+        if check_if_data_changed(url, scraped_data):
+            saved, save_msg = save_scrape_results(url, scraped_data)
+            if saved:
+                print(f"✅ Changes detected & saved for {url}", flush=True)
+                updated += 1
             else:
-                print(f"Cron: No changes for {url}")
+                print(f"⚠️ Failed to save changes for {url}: {save_msg}", flush=True)
+                errors += 1
+        else:
+            print(f"ℹ️ No changes detected for {url} (skipped save)", flush=True)
+            unchanged += 1
+
+    summary = f"Scrape cycle complete. Checked: {len(sites)}, Updated: {updated}, Unchanged: {unchanged}, Errors: {errors}"
+    print(f"🏁 [CRON JOB] {summary}", flush=True)
+    print("--------------------------------------------------", flush=True)
+    return {"updated": updated, "unchanged": unchanged, "errors": errors, "total": len(sites)}
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=scheduled_scraping, trigger="interval", hours=get_interval(), id='scrape_job')
@@ -166,8 +189,18 @@ def update_cron():
         json.dump({'interval_hours': hours}, f)
         
     scheduler.reschedule_job('scrape_job', trigger='interval', hours=hours)
+    print(f"⏰ [CRON] Schedule updated to every {hours} hour(s) successfully.", flush=True)
     
     return jsonify({'message': f'Cron updated successfully! It will now auto-scrape every {hours} hours.'}), 200
+
+@app.route('/api/cron/trigger', methods=['POST', 'GET'])
+def trigger_cron():
+    print("⚡ [MANUAL TRIGGER] Triggering scrape cycle on demand...", flush=True)
+    results = scheduled_scraping()
+    return jsonify({
+        'message': f"Scraping completed! Checked {results['total']} sites ({results['updated']} updated, {results['unchanged']} unchanged).",
+        'results': results
+    }), 200
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
