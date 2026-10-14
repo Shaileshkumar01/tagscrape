@@ -8,6 +8,7 @@ export default function Dashboard() {
     const { logout, roleId } = useContext(AuthContext);
     const navigate = useNavigate();
     const [url, setUrl] = useState('');
+    const [cronHours, setCronHours] = useState('');
     const [loading, setLoading] = useState(false);
     const [results, setResults] = useState(null);
     const [error, setError] = useState('');
@@ -79,6 +80,49 @@ export default function Dashboard() {
         }
     };
 
+    const handleScheduleChange = async (e, siteId) => {
+        e.stopPropagation();
+        const newInterval = e.target.value ? parseInt(e.target.value) : null;
+        try {
+            const response = await apiFetch(`/api/sites/${siteId}/schedule`, {
+                method: 'PUT',
+                body: { cron_interval_hours: newInterval }
+            });
+            if (response.ok) {
+                fetchSites();
+            } else {
+                alert('Failed to update schedule');
+            }
+        } catch (err) {
+            console.error('Failed to update schedule', err);
+        }
+    };
+
+    const handleScrapeSiteNow = async (e, site) => {
+        e.stopPropagation();
+        try {
+            const response = await apiFetch(`/api/sites/${site.id}/scrape`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            if (response.ok) {
+                if (data.unchanged) {
+                    alert(`No changes detected for ${site.url}`);
+                } else {
+                    alert(`Scrape completed! Updates saved for ${site.url}`);
+                }
+                fetchSites();
+                if (selectedSite?.id === site.id) {
+                    handleSiteClick(site);
+                }
+            } else {
+                alert(data.message || 'Scrape failed');
+            }
+        } catch (err) {
+            alert('Scrape request failed');
+        }
+    };
+
     useEffect(() => {
         fetchSites();
     }, []);
@@ -96,7 +140,10 @@ export default function Dashboard() {
         try {
             const response = await apiFetch('/api/scrape', {
                 method: 'POST',
-                body: { url }
+                body: {
+                    url,
+                    cron_interval_hours: cronHours ? parseInt(cronHours) : null
+                }
             });
             const data = await response.json();
             if (response.ok) {
@@ -106,6 +153,7 @@ export default function Dashboard() {
                 setResults(data.results || data);
                 fetchSites();
                 setUrl('');
+                setCronHours('');
                 // Optionally open the side panel to show the new result immediately
                 // but let's just refresh the list for now.
             } else {
@@ -138,7 +186,7 @@ export default function Dashboard() {
                     <div className="card fade-in">
                         <h3 className="card-title">Fetch New Tags</h3>
                         <p className="text-muted mb-4">Enter a URL to scrape its SEO meta tags and headings.</p>
-                        <form onSubmit={handleScrape} style={{ display: 'flex', gap: '12px' }}>
+                        <form onSubmit={handleScrape} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                             <input
                                 type="url"
                                 className="form-input"
@@ -146,8 +194,21 @@ export default function Dashboard() {
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
                                 required
-                                style={{ flex: 1 }}
+                                style={{ flex: 2, minWidth: '240px' }}
                             />
+                            <select
+                                className="form-input"
+                                value={cronHours}
+                                onChange={(e) => setCronHours(e.target.value)}
+                                style={{ flex: 1, minWidth: '180px', cursor: 'pointer' }}
+                            >
+                                <option value="">Manual Only</option>
+                                <option value="1">Every 1 hour</option>
+                                <option value="6">Every 6 hours</option>
+                                <option value="12">Every 12 hours</option>
+                                <option value="24">Every 24 hours (Daily)</option>
+                                <option value="168">Weekly (7 days)</option>
+                            </select>
                             <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '140px' }}>
                                 {loading ? 'Scraping...' : 'Fetch Tags'}
                             </button>
@@ -166,8 +227,10 @@ export default function Dashboard() {
                                 <tr>
                                     <th>ID</th>
                                     <th>Website URL</th>
-                                    <th>First Added</th>
-                                    <th>Action</th>
+                                    <th>Auto-Scrape Schedule</th>
+                                    <th>Last Scraped</th>
+                                    <th>Next Run</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -180,12 +243,57 @@ export default function Dashboard() {
                                     >
                                         <td>{site.id}</td>
                                         <td>
-                                            <a href={site.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{site.url}</a>
+                                            <a href={site.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontWeight: 500 }}>
+                                                {site.url}
+                                            </a>
                                         </td>
-                                        <td className="text-muted">{formatDateOnly(site.created_at)}</td>
                                         <td>
                                             {(roleId === 1 || roleId === 2) ? (
-                                                <button onClick={(e) => handleDeleteSite(e, site.id)} className="btn btn-danger" style={{ padding: '6px 12px', fontSize: '12px' }}>Delete</button>
+                                                <select
+                                                    value={site.cron_interval_hours || ''}
+                                                    onClick={e => e.stopPropagation()}
+                                                    onChange={e => handleScheduleChange(e, site.id)}
+                                                    className="form-input"
+                                                    style={{ padding: '6px 10px', fontSize: '13px', width: 'auto', cursor: 'pointer' }}
+                                                >
+                                                    <option value="">Manual Only</option>
+                                                    <option value="1">Every 1 hr</option>
+                                                    <option value="6">Every 6 hrs</option>
+                                                    <option value="12">Every 12 hrs</option>
+                                                    <option value="24">Every 24 hrs</option>
+                                                    <option value="168">Weekly (7d)</option>
+                                                </select>
+                                            ) : (
+                                                <span className="badge">
+                                                    {site.cron_interval_hours ? `Every ${site.cron_interval_hours}h` : 'Manual'}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="text-muted" style={{ fontSize: '13px' }}>
+                                            {site.last_scraped_at ? formatDateTime(site.last_scraped_at) : 'Never'}
+                                        </td>
+                                        <td className="text-muted" style={{ fontSize: '13px' }}>
+                                            {site.cron_interval_hours && site.next_scrape_at ? formatDateTime(site.next_scrape_at) : '-'}
+                                        </td>
+                                        <td>
+                                            {(roleId === 1 || roleId === 2) ? (
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button
+                                                        onClick={(e) => handleScrapeSiteNow(e, site)}
+                                                        className="btn btn-secondary"
+                                                        style={{ padding: '6px 10px', fontSize: '12px' }}
+                                                        title="Scrape this website now"
+                                                    >
+                                                        Scrape Now
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleDeleteSite(e, site.id)}
+                                                        className="btn btn-danger"
+                                                        style={{ padding: '6px 10px', fontSize: '12px' }}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <span className="badge">View Only</span>
                                             )}
@@ -193,7 +301,7 @@ export default function Dashboard() {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan="4" className="text-center text-muted" style={{ padding: '32px' }}>No websites tracked yet</td>
+                                        <td colSpan="6" className="text-center text-muted" style={{ padding: '32px' }}>No websites tracked yet</td>
                                     </tr>
                                 )}
                             </tbody>

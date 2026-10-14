@@ -21,23 +21,50 @@ def get_db_connection():
         return None
 
 
-def save_scrape_results(url, data, user_id=1):
+def save_scrape_results(url, data, user_id=1, cron_interval_hours=None):
     conn = get_db_connection()
     if not conn:
         return False, "Database connection failed"
 
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM websites WHERE url = %s", (url,))
+        cursor.execute("SELECT id, cron_interval_hours FROM websites WHERE url = %s", (url,))
         website = cursor.fetchone()
+        hours = int(cron_interval_hours) if cron_interval_hours and int(cron_interval_hours) > 0 else None
+
         if website:
             web_id = website[0]
-            cursor.execute("UPDATE websites SET last_scraped_at = NOW() WHERE id = %s", (web_id,))
+            existing_hours = website[1]
+            effective_hours = hours if cron_interval_hours is not None else existing_hours
+            if effective_hours and effective_hours > 0:
+                cursor.execute("""
+                    UPDATE websites 
+                    SET last_scraped_at = NOW(), 
+                        cron_interval_hours = %s,
+                        next_scrape_at = DATE_ADD(NOW(), INTERVAL %s HOUR) 
+                    WHERE id = %s
+                """, (effective_hours, effective_hours, web_id))
+            else:
+                cursor.execute("""
+                    UPDATE websites 
+                    SET last_scraped_at = NOW() 
+                    WHERE id = %s
+                """, (web_id,))
         else:
-            cursor.execute(
-                "INSERT INTO websites (url, name, description, status, created_by, last_scraped_at) VALUES (%s, %s, %s, %s, %s, NOW())",
-                (url, "Auto-Added Website", "Scraped by System", "active", user_id)
-            )
+            if hours and hours > 0:
+                cursor.execute(
+                    """INSERT INTO websites 
+                       (url, name, description, status, created_by, last_scraped_at, cron_interval_hours, next_scrape_at) 
+                       VALUES (%s, %s, %s, %s, %s, NOW(), %s, DATE_ADD(NOW(), INTERVAL %s HOUR))""",
+                    (url, "Auto-Added Website", "Scraped by System", "active", user_id, hours, hours)
+                )
+            else:
+                cursor.execute(
+                    """INSERT INTO websites 
+                       (url, name, description, status, created_by, last_scraped_at, cron_interval_hours, next_scrape_at) 
+                       VALUES (%s, %s, %s, %s, %s, NOW(), NULL, NULL)""",
+                    (url, "Auto-Added Website", "Scraped by System", "active", user_id)
+                )
             web_id = cursor.lastrowid
             if user_id:
                 cursor.execute(
@@ -360,3 +387,74 @@ def assign_user_sites(user_id, site_ids):
     finally:
         cursor.close()
         conn.close()
+
+
+def get_due_sites():
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT id, url, name, cron_interval_hours, last_scraped_at, next_scrape_at 
+            FROM websites 
+            WHERE status = 'active' 
+              AND cron_interval_hours IS NOT NULL 
+              AND cron_interval_hours > 0 
+              AND (next_scrape_at IS NULL OR next_scrape_at <= NOW())
+        """)
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_site_schedule(website_id, cron_interval_hours):
+    conn = get_db_connection()
+    if not conn:
+        return False, "Database error"
+    try:
+        cursor = conn.cursor()
+        hours = int(cron_interval_hours) if cron_interval_hours and int(cron_interval_hours) > 0 else None
+        if hours:
+            cursor.execute("""
+                UPDATE websites 
+                SET cron_interval_hours = %s, 
+                    next_scrape_at = DATE_ADD(NOW(), INTERVAL %s HOUR) 
+                WHERE id = %s
+            """, (hours, hours, website_id))
+        else:
+            cursor.execute("""
+                UPDATE websites 
+                SET cron_interval_hours = NULL, 
+                    next_scrape_at = NULL 
+                WHERE id = %s
+            """, (website_id,))
+        conn.commit()
+        return True, "Schedule updated successfully"
+    except mysql.connector.Error as err:
+        return False, f"Failed to update schedule: {err}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def record_site_scraped(website_id):
+    conn = get_db_connection()
+    if not conn:
+        return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE websites 
+            SET last_scraped_at = NOW(),
+                next_scrape_at = CASE 
+                    WHEN cron_interval_hours > 0 THEN DATE_ADD(NOW(), INTERVAL cron_interval_hours HOUR) 
+                    ELSE next_scrape_at 
+                END 
+            WHERE id = %s
+        """, (website_id,))
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
