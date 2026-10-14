@@ -457,4 +457,103 @@ def record_site_scraped(website_id):
         conn.commit()
     finally:
         cursor.close()
-        conn.close()
+        conn.close()
+
+
+def get_site_by_id(website_id):
+    conn = get_db_connection()
+    if not conn:
+        return None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM websites WHERE id = %s", (website_id,))
+        return cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_user_profile(user_id, name=None, email=None, role_id=None, password=None):
+    conn = get_db_connection()
+    if not conn:
+        return False, "Database error"
+    try:
+        cursor = conn.cursor()
+        updates = []
+        params = []
+        if name is not None:
+            updates.append("name = %s")
+            params.append(name.strip())
+        if email is not None:
+            updates.append("email = %s")
+            params.append(email.strip())
+        if role_id is not None:
+            if user_id == 1 and int(role_id) != 1:
+                return False, "Primary Super Admin role cannot be modified"
+            updates.append("role_id = %s")
+            params.append(int(role_id))
+        if password:
+            updates.append("password_hash = %s")
+            params.append(generate_password_hash(password))
+
+        if not updates:
+            return True, "No changes requested"
+
+        params.append(user_id)
+        query = f"UPDATE users SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(query, tuple(params))
+        conn.commit()
+        return True, "User updated successfully"
+    except mysql.connector.Error as err:
+        return False, f"Failed to update user: {err}"
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_report_data(run_id=None, website_id=None, user_id=None, role_id=None):
+    conn = get_db_connection()
+    if not conn:
+        return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT 
+                sr.id AS run_id,
+                w.url AS website_url,
+                sr.started_at,
+                sr.status AS run_status,
+                st.tag_type,
+                st.tag_name,
+                st.content
+            FROM scraped_tags st
+            JOIN scrape_runs sr ON st.scrape_run_id = sr.id
+            JOIN websites w ON sr.website_id = w.id
+        """
+        conditions = []
+        params = []
+
+        if run_id:
+            conditions.append("sr.id = %s")
+            params.append(run_id)
+
+        if website_id:
+            conditions.append("w.id = %s")
+            params.append(website_id)
+
+        if role_id == 3 and user_id:
+            conditions.append("""
+                (w.created_by = %s OR w.id IN (SELECT website_id FROM user_websites WHERE user_id = %s))
+            """)
+            params.extend([user_id, user_id])
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY sr.started_at DESC, st.id ASC"
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+

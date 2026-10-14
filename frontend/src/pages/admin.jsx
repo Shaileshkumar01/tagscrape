@@ -2,16 +2,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateOnly } from '../utils/date';
 import { apiFetch } from '../utils/api';
+import EditUserModal from '../components/EditUserModal';
 
 export default function Admin() {
     const [users, setUsers] = useState([]);
+    const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [roleId, setRoleId] = useState(3);
     const [message, setMessage] = useState('');
-    const [intervalHours, setIntervalHours] = useState(24);
-    const [cronMessage, setCronMessage] = useState('');
-    const [triggering, setTriggering] = useState(false);
+    const [editingUser, setEditingUser] = useState(null);
+    const [searchUser, setSearchUser] = useState('');
     const navigate = useNavigate();
 
     const fetchUsers = async () => {
@@ -26,21 +27,8 @@ export default function Admin() {
         }
     };
 
-    const fetchCron = async () => {
-        try {
-            const response = await apiFetch('/api/cron');
-            if (response.ok) {
-                const data = await response.json();
-                setIntervalHours(data.interval_hours);
-            }
-        } catch (err) {
-            console.error('Failed to fetch cron settings', err);
-        }
-    };
-
     useEffect(() => {
         fetchUsers();
-        fetchCron();
     }, []);
 
     const handleCreateUser = async (e) => {
@@ -48,11 +36,17 @@ export default function Admin() {
         try {
             const response = await apiFetch('/api/users', {
                 method: 'POST',
-                body: { email, password, role_id: roleId }
+                body: { 
+                    name: name.trim() || undefined,
+                    email: email.trim(), 
+                    password, 
+                    role_id: roleId 
+                }
             });
             const data = await response.json();
             if (response.ok) {
                 setMessage('User created successfully!');
+                setName('');
                 setEmail('');
                 setPassword('');
                 setRoleId(3);
@@ -82,212 +76,177 @@ export default function Admin() {
         }
     };
 
-    const handleChangePassword = async (id) => {
-        const newPassword = window.prompt("enter new password for this user");
-        if (!newPassword) return;
-        try {
-            const response = await apiFetch(`/api/users/${id}/password`, {
-                method: "PUT",
-                body: { password: newPassword }
-            });
-            const data = await response.json();
-            if (response.ok) {
-                alert(data.message);
-            } else {
-                alert(data.message || 'failed to update password');
-            }
-        }
-        catch (err) {
-            alert('error updating password');
-        }
+    const handleUserSaved = (msg) => {
+        setMessage(msg);
+        fetchUsers();
+        setTimeout(() => setMessage(''), 4000);
     };
 
-    const handleUpdateCron = async (e) => {
-        e.preventDefault();
-        setCronMessage('');
-        try {
-            const response = await apiFetch('/api/cron', {
-                method: 'POST',
-                body: { interval_hours: Number(intervalHours) }
-            });
-            const data = await response.json();
-            if (response.ok) {
-                setCronMessage(data.message || 'Schedule updated successfully!');
-            } else {
-                setCronMessage(data.message || 'Failed to update schedule');
-            }
-        } catch (err) {
-            setCronMessage('Failed to connect to backend.');
-        }
-    };
-
-    const handleTriggerCron = async () => {
-        setTriggering(true);
-        setCronMessage('');
-        try {
-            const response = await apiFetch('/api/cron/trigger', {
-                method: 'POST'
-            });
-            const data = await response.json();
-            if (response.ok) {
-                setCronMessage(data.message || 'Scraping triggered successfully!');
-            } else {
-                setCronMessage(data.message || 'Failed to trigger scraping');
-            }
-        } catch (err) {
-            setCronMessage('Failed to connect to backend.');
-        } finally {
-            setTriggering(false);
-        }
-    };
+    const filteredUsers = users.filter(u => 
+        (u.email?.toLowerCase().includes(searchUser.toLowerCase())) ||
+        (u.name?.toLowerCase().includes(searchUser.toLowerCase()))
+    );
 
     return (
-        <div className="container fade-in">
-            <div className="header">
+        <div className="admin-page-container fade-in">
+            <div className="header" style={{ marginBottom: '28px' }}>
                 <div>
-                    <h2 className="card-title">Super Admin Portal</h2>
-                    <p className="text-muted">Manage system users and access levels</p>
+                    <h2 className="card-title">User Management</h2>
+                    <p className="text-muted">Manage system users, assign roles, and configure website access permissions.</p>
                 </div>
-                <button onClick={() => navigate('/dashboard')} className="btn btn-secondary">
-                    ← Back to Dashboard
-                </button>
             </div>
 
-            <div className="card fade-in">
-                <h3 className="card-title">Create New User</h3>
-                <p className="text-muted mb-4">Add a new admin or standard user to the system.</p>
+            {message && (
+                <div className={`notification-banner ${message.includes('successfully') ? 'success' : 'error'} mb-4`}>
+                    <span>{message}</span>
+                    <button onClick={() => setMessage('')}>&times;</button>
+                </div>
+            )}
 
-                <form onSubmit={handleCreateUser} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            {/* Create User Card */}
+            <div className="card fade-in">
+                <h3 className="card-title">Add New User</h3>
+                <p className="text-muted mb-4">Provision a new account with standard or administrator privileges.</p>
+
+                <form onSubmit={handleCreateUser} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <input
+                        type="text"
+                        placeholder="Full Name"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        className="form-input"
+                        style={{ flex: 1, minWidth: '160px' }}
+                    />
                     <input
                         type="email"
-                        placeholder="Email Address"
+                        placeholder="Email Address *"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         required
                         className="form-input"
-                        style={{ flex: 1 }}
+                        style={{ flex: 1.5, minWidth: '200px' }}
                     />
                     <input
                         type="password"
-                        placeholder="Password"
+                        placeholder="Password *"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         required
                         className="form-input"
-                        style={{ flex: 1 }}
+                        style={{ flex: 1, minWidth: '150px' }}
                     />
                     <select
                         value={roleId}
                         onChange={e => setRoleId(parseInt(e.target.value))}
                         required
                         className="form-input"
-                        style={{ flex: 1, cursor: 'pointer' }}
+                        style={{ flex: 1, minWidth: '150px', cursor: 'pointer' }}
                     >
                         <option value={3}>Standard User</option>
                         <option value={2}>Admin</option>
+                        <option value={1}>Super Admin</option>
                     </select>
-                    <button type="submit" className="btn btn-success" style={{ padding: '12px 24px' }}>
-                        Add User
+                    <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', minWidth: '120px' }}>
+                        Create User
                     </button>
                 </form>
-                {message && <p className={`mt-4 ${message.includes('successfully') ? 'text-success' : 'text-danger'}`}>{message}</p>}
             </div>
 
+            {/* User Directory */}
             <div className="card fade-in">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '16px' }}>
+                <div className="card-header-flex">
                     <div>
-                        <h3 className="card-title" style={{ marginBottom: '4px' }}>Automated Scraping Schedule</h3>
-                        <p className="text-muted" style={{ margin: 0 }}>Set how frequently background cron runs automatically to check all tracked websites for changes.</p>
+                        <h3 className="card-title">User Directory</h3>
+                        <p className="text-muted" style={{ margin: 0, fontSize: '13px' }}>
+                            View and edit accounts, roles, passwords, and assigned websites.
+                        </p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleTriggerCron}
-                        disabled={triggering}
-                        className="btn btn-secondary"
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                        {triggering ? 'Scraping All Sites...' : 'Run Scraping Now'}
-                    </button>
+                    {users.length > 5 && (
+                        <input
+                            type="text"
+                            placeholder="Filter by name or email..."
+                            value={searchUser}
+                            onChange={e => setSearchUser(e.target.value)}
+                            className="form-input"
+                            style={{ width: '220px', padding: '6px 12px', fontSize: '13px' }}
+                        />
+                    )}
                 </div>
-
-                <form onSubmit={handleUpdateCron} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <label style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Run every:</label>
-                    <input
-                        type="number"
-                        min="1"
-                        max="720"
-                        value={intervalHours}
-                        onChange={e => setIntervalHours(e.target.value)}
-                        required
-                        className="form-input"
-                        style={{ width: '120px' }}
-                    />
-                    <span style={{ color: 'var(--text-muted)' }}>hours</span>
-                    <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px' }}>
-                        Save Schedule
-                    </button>
-                </form>
-                {cronMessage && <p className={`mt-4 ${cronMessage.includes('successfully') || cronMessage.includes('completed') ? 'text-success' : 'text-danger'}`}>{cronMessage}</p>}
-            </div>
-
-            <div className="card fade-in">
-                <h3 className="card-title">User Directory</h3>
-                <p className="text-muted mb-4">All registered users in the system.</p>
 
                 <div className="table-container">
                     <table className="data-table">
                         <thead>
                             <tr>
                                 <th>ID</th>
+                                <th>User</th>
                                 <th>Email</th>
                                 <th>Role</th>
-                                <th>Date Added</th>
+                                <th>Created</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {users.length > 0 ? users.map((user) => (
+                            {filteredUsers.length > 0 ? filteredUsers.map((user) => (
                                 <tr key={user.id}>
-                                    <td>{user.id}</td>
-                                    <td style={{ fontWeight: 500 }}>{user.email}</td>
+                                    <td>#{user.id}</td>
                                     <td>
-                                        <span className={`badge ${user.role === 'super_admin' ? 'badge-warning' : 'badge-success'}`}>
-                                            {user.role ? user.role.toUpperCase() : 'UNKNOWN'}
+                                        <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                            {user.name || user.email?.split('@')[0]}
+                                        </div>
+                                    </td>
+                                    <td className="text-muted" style={{ fontSize: '13px' }}>
+                                        {user.email}
+                                    </td>
+                                    <td>
+                                        <span className={`badge ${user.role === 'super_admin' ? 'badge-warning' : user.role === 'admin' ? 'badge-primary' : 'badge-success'}`}>
+                                            {user.role ? user.role.toUpperCase() : 'USER'}
                                         </span>
                                     </td>
-                                    <td className="text-muted">{formatDateOnly(user.created_at)}</td>
+                                    <td className="text-muted" style={{ fontSize: '12px' }}>
+                                        {formatDateOnly(user.created_at)}
+                                    </td>
                                     <td>
-                                        {user.role === 'super_admin' ? (
-                                            <span className="text-muted" style={{ fontStyle: 'italic', fontSize: '14px' }}>Cannot Delete</span>
-                                        ) : (
-                                            <>
-                                                <button 
-                                                    onClick={() => handleChangePassword(user.id)} 
-                                                    className="btn btn-secondary"
-                                                    style={{ padding: '6px 12px', fontSize: '12px', marginRight: '8px' }}
-                                                >
-                                                    Change Password
-                                                </button>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button 
+                                                onClick={() => setEditingUser(user)} 
+                                                className="btn btn-secondary"
+                                                style={{ padding: '6px 12px', fontSize: '12px' }}
+                                                title="Edit user details, roles, password and assigned sites"
+                                            >
+                                                Edit User
+                                            </button>
+                                            {user.id !== 1 && (
                                                 <button
                                                     onClick={() => handleDeleteUser(user.id)}
                                                     className="btn btn-danger"
                                                     style={{ padding: '6px 12px', fontSize: '12px' }}
+                                                    title="Delete this user account"
                                                 >
-                                                    Delete User
+                                                    Delete
                                                 </button>
-                                            </>
-                                        )}
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan="5" className="text-center text-muted" style={{ padding: '32px' }}>No users found</td>
+                                    <td colSpan="6" className="text-center text-muted" style={{ padding: '36px' }}>
+                                        No users found.
+                                    </td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            {/* Edit User Modal */}
+            <EditUserModal
+                user={editingUser}
+                isOpen={!!editingUser}
+                onClose={() => setEditingUser(null)}
+                onSaved={handleUserSaved}
+            />
         </div>
     );
 }
