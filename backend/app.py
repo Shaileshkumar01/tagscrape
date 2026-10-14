@@ -13,12 +13,15 @@ from db import (
     delete_user_by_id,
     get_all_users,
     get_db_connection,
+    get_due_sites,
     get_scrape_details,
     get_scrape_history,
     get_scrapes_for_site,
     get_unique_sites,
     get_user_assigned_site_ids,
+    record_site_scraped,
     save_scrape_results,
+    update_site_schedule,
     update_user_password,
 )
 from scraper import scrape_website
@@ -67,6 +70,8 @@ def get_current_user():
 def scrape():
     request_data = request.get_json() or {}
     url = request_data.get('url')
+    cron_interval_hours = request_data.get('cron_interval_hours')
+
     if not url:
         return jsonify({'message': 'URL is required'}), 400
 
@@ -82,7 +87,9 @@ def scrape():
             'unchanged': True
         }), 200
 
-    saved, save_msg = save_scrape_results(url, scraped_data, user_id=g.user_id)
+    saved, save_msg = save_scrape_results(
+        url, scraped_data, user_id=g.user_id, cron_interval_hours=cron_interval_hours
+    )
     if not saved:
         return jsonify({'message': save_msg}), 500
 
@@ -136,6 +143,55 @@ def remove_site(website_id):
         return jsonify({'message': message}), 400
 
 
+@app.route('/api/sites/<int:website_id>/schedule', methods=['PUT'])
+@require_auth(roles=[1, 2])
+def set_site_schedule(website_id):
+    data = request.get_json() or {}
+    cron_interval_hours = data.get('cron_interval_hours')
+    success, msg = update_site_schedule(website_id, cron_interval_hours)
+    if success:
+        return jsonify({'message': msg}), 200
+    return jsonify({'message': msg}), 400
+
+
+@app.route('/api/sites/<int:website_id>/scrape', methods=['POST'])
+@require_auth(roles=[1, 2])
+def scrape_single_site(website_id):
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'message': 'Database connection failed'}), 500
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, url, cron_interval_hours FROM websites WHERE id = %s", (website_id,))
+    site = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not site:
+        return jsonify({'message': 'Website not found'}), 404
+
+    url = site['url']
+    scraped_data, error = scrape_website(url)
+    if error:
+        return jsonify({'message': error}), 500
+
+    has_changed = check_if_data_changed(url, scraped_data)
+    if not has_changed:
+        record_site_scraped(site['id'])
+        return jsonify({
+            'message': 'No changes detected since last scrape. Database update skipped.',
+            'results': scraped_data,
+            'unchanged': True
+        }), 200
+
+    saved, save_msg = save_scrape_results(
+        url, scraped_data, user_id=g.user_id, cron_interval_hours=site.get('cron_interval_hours')
+    )
+    if not saved:
+        return jsonify({'message': save_msg}), 500
+
+    return jsonify({'message': save_msg, 'results': scraped_data}), 200
+
+
 # ==============================================================================
 # User Management Endpoints (Super Admin Only: Role 1)
 # ==============================================================================
@@ -169,7 +225,6 @@ def create_user():
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 @require_auth(roles=[1])
 def remove_user(user_id):
-    # Prevent deleting super admin id 1
     if user_id == 1:
         return jsonify({'message': 'Primary Super Admin cannot be deleted'}), 400
 
@@ -212,88 +267,65 @@ def set_user_sites(user_id):
 
 
 # ==============================================================================
-# Cron & Scheduler Endpoints
+# Per-Site Cron & Scheduler Tick
 # ==============================================================================
 
-CONFIG_FILE = 'config.json'
+def run_scheduler_tick():
+    due_sites = get_due_sites()
+    if not due_sites:
+        return {"total_checked": 0, "updated": 0, "unchanged": 0, "errors": 0}
 
-
-def get_interval():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f).get('interval_hours', 24)
-    return 24
-
-
-def scheduled_scraping():
     print("--------------------------------------------------", flush=True)
-    print("⏰ [CRON JOB] Starting automated scrape cycle...", flush=True)
-    sites = get_unique_sites()
-    print(f"⏰ [CRON JOB] Found {len(sites)} website(s) to check.", flush=True)
+    print(f"[PER-SITE CRON] Checking {len(due_sites)} due website(s)...", flush=True)
 
     updated = 0
     unchanged = 0
     errors = 0
 
-    for site in sites:
+    for site in due_sites:
         url = site['url']
-        print(f"⏰ Checking: {url}", flush=True)
+        site_id = site['id']
+        interval = site.get('cron_interval_hours')
+        print(f"[CRON] Checking: {url} (Scheduled interval: {interval}h)", flush=True)
         scraped_data, error = scrape_website(url)
         if error:
-            print(f"❌ Error scraping {url}: {error}", flush=True)
+            print(f"[ERROR] Scraping {url}: {error}", flush=True)
+            record_site_scraped(site_id)
             errors += 1
             continue
 
         if check_if_data_changed(url, scraped_data):
-            saved, save_msg = save_scrape_results(url, scraped_data)
+            saved, save_msg = save_scrape_results(url, scraped_data, cron_interval_hours=interval)
             if saved:
-                print(f"✅ Changes detected & saved for {url}", flush=True)
+                print(f"[UPDATED] Changes detected & saved for {url}", flush=True)
                 updated += 1
             else:
-                print(f"⚠️ Failed to save changes for {url}: {save_msg}", flush=True)
+                print(f"[WARNING] Failed to save changes for {url}: {save_msg}", flush=True)
                 errors += 1
         else:
-            print(f"ℹ️ No changes detected for {url} (skipped save)", flush=True)
+            print(f"[UNCHANGED] No changes detected for {url} (skipped save)", flush=True)
+            record_site_scraped(site_id)
             unchanged += 1
 
-    summary = f"Scrape cycle complete. Checked: {len(sites)}, Updated: {updated}, Unchanged: {unchanged}, Errors: {errors}"
-    print(f"🏁 [CRON JOB] {summary}", flush=True)
+    summary = f"Per-site cycle complete. Checked: {len(due_sites)}, Updated: {updated}, Unchanged: {unchanged}, Errors: {errors}"
+    print(f"[PER-SITE CRON] {summary}", flush=True)
     print("--------------------------------------------------", flush=True)
-    return {"updated": updated, "unchanged": unchanged, "errors": errors, "total": len(sites)}
+    return {"total_checked": len(due_sites), "updated": updated, "unchanged": unchanged, "errors": errors}
 
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=scheduled_scraping, trigger="interval", hours=get_interval(), id='scrape_job')
+# Check every 1 minute for any site whose next_scrape_at has arrived
+scheduler.add_job(func=run_scheduler_tick, trigger="interval", minutes=1, id='site_tick_job')
 scheduler.start()
 
 
-@app.route('/api/cron', methods=['GET'])
-@require_auth(roles=[1])
-def get_cron():
-    return jsonify({'interval_hours': get_interval()}), 200
-
-
-@app.route('/api/cron', methods=['POST'])
-@require_auth(roles=[1])
-def update_cron():
-    data = request.get_json() or {}
-    hours = int(data.get('interval_hours', 24))
-
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump({'interval_hours': hours}, f)
-
-    scheduler.reschedule_job('scrape_job', trigger='interval', hours=hours)
-    print(f"⏰ [CRON] Schedule updated to every {hours} hour(s) successfully.", flush=True)
-
-    return jsonify({'message': f'Cron updated successfully! It will now auto-scrape every {hours} hours.'}), 200
-
-
+@app.route('/api/cron/tick', methods=['POST', 'GET'])
 @app.route('/api/cron/trigger', methods=['POST', 'GET'])
 def trigger_cron():
-    print("⚡ [MANUAL TRIGGER] Triggering scrape cycle on demand...", flush=True)
-    results = scheduled_scraping()
+    print("[CRON TICK] Triggering per-site scheduler tick...", flush=True)
+    results = run_scheduler_tick()
     return jsonify({
-        'message': f"Scraping completed! Checked {results['total']} sites ({results['updated']} updated, {results['unchanged']} unchanged).",
+        'message': f"Tick completed! Processed {results['total_checked']} due site(s) ({results['updated']} updated, {results['unchanged']} unchanged).",
         'results': results
     }), 200
 
