@@ -1,21 +1,21 @@
 import { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authcontext";
-import { formatDateTime, formatDateOnly } from "../utils/date";
+import { formatDateTime } from "../utils/date";
 import { apiFetch } from "../utils/api";
+import { downloadReport } from "../utils/download";
 
 export default function Dashboard() {
-    const { logout, roleId } = useContext(AuthContext);
+    const { roleId } = useContext(AuthContext);
     const navigate = useNavigate();
     const [url, setUrl] = useState('');
     const [cronHours, setCronHours] = useState('');
     const [loading, setLoading] = useState(false);
-    const [results, setResults] = useState(null);
+    const [downloadingAll, setDownloadingAll] = useState(false);
+    const [downloadingSiteId, setDownloadingSiteId] = useState(null);
     const [error, setError] = useState('');
-
+    const [successMessage, setSuccessMessage] = useState('');
     const [sites, setSites] = useState([]);
-    const [selectedSite, setSelectedSite] = useState(null);
-    const [siteScrapes, setSiteScrapes] = useState([]);
 
     const fetchSites = async () => {
         try {
@@ -29,36 +29,12 @@ export default function Dashboard() {
         }
     };
 
-    const handleSiteClick = async (site) => {
-        setSelectedSite(site);
-        setResults(null);
-        try {
-            const response = await apiFetch(`/api/sites/${site.id}/scrapes`);
-            if (response.ok) {
-                const data = await response.json();
-                setSiteScrapes(data);
-            }
-        } catch (err) {
-            console.error('Failed to fetch site scrapes', err);
-        }
-    };
+    useEffect(() => {
+        fetchSites();
+    }, []);
 
-    const handleRunClick = async (runId) => {
-        try {
-            const response = await apiFetch(`/api/scrape/${runId}`);
-            if (response.ok) {
-                const data = await response.json();
-                setResults(data);
-            }
-        } catch (err) {
-            console.error('Failed to fetch details', err);
-        }
-    };
-
-    const closeSidePanel = () => {
-        setSelectedSite(null);
-        setResults(null);
-        setSiteScrapes([]);
+    const handleSiteClick = (siteId) => {
+        navigate(`/sites/${siteId}`);
     };
 
     const handleDeleteSite = async (e, id) => {
@@ -70,10 +46,9 @@ export default function Dashboard() {
                 method: 'DELETE'
             });
             if (response.ok) {
-                if (selectedSite && selectedSite.id === id) {
-                    closeSidePanel();
-                }
                 fetchSites();
+            } else {
+                alert('Failed to delete site.');
             }
         } catch (err) {
             console.error('Failed to delete site', err);
@@ -112,9 +87,6 @@ export default function Dashboard() {
                     alert(`Scrape completed! Updates saved for ${site.url}`);
                 }
                 fetchSites();
-                if (selectedSite?.id === site.id) {
-                    handleSiteClick(site);
-                }
             } else {
                 alert(data.message || 'Scrape failed');
             }
@@ -123,19 +95,24 @@ export default function Dashboard() {
         }
     };
 
-    useEffect(() => {
-        fetchSites();
-    }, []);
+    const handleDownloadAll = async () => {
+        setDownloadingAll(true);
+        await downloadReport('/api/reports/all', 'all_sites_scrape_report.csv');
+        setDownloadingAll(false);
+    };
 
-    const handleLogout = () => {
-        logout();
-        navigate('/login');
+    const handleDownloadSiteReport = async (e, siteId, siteUrl) => {
+        e.stopPropagation();
+        setDownloadingSiteId(siteId);
+        const cleanHost = siteUrl.replace(/https?:\/\//, '').replace(/[\/\?#].*$/, '') || `site_${siteId}`;
+        await downloadReport(`/api/sites/${siteId}/report`, `${cleanHost}_report.csv`);
+        setDownloadingSiteId(null);
     };
 
     const handleScrape = async (e) => {
         e.preventDefault();
         setError('');
-        setResults(null);
+        setSuccessMessage('');
         setLoading(true);
         try {
             const response = await apiFetch('/api/scrape', {
@@ -148,14 +125,13 @@ export default function Dashboard() {
             const data = await response.json();
             if (response.ok) {
                 if (data.unchanged) {
-                    alert('No changes detected since the last scrape. Database was not updated.');
+                    setSuccessMessage('No changes detected since last scrape. Site registered.');
+                } else {
+                    setSuccessMessage('Website successfully scraped and registered!');
                 }
-                setResults(data.results || data);
                 fetchSites();
                 setUrl('');
                 setCronHours('');
-                // Optionally open the side panel to show the new result immediately
-                // but let's just refresh the list for now.
             } else {
                 setError(data.message || 'Scraping failed');
             }
@@ -167,239 +143,191 @@ export default function Dashboard() {
     };
 
     return (
-        <>
-            <div className="container fade-in">
-                <div className="header">
-                    <div>
-                        <h2 className="card-title">Tag Fetcher</h2>
-                        <p className="text-muted">Dashboard & Overview</p>
-                    </div>
-                    <div className="header-actions">
-                        {roleId === 1 && (
-                            <button onClick={() => navigate('/admin')} className="btn btn-secondary">Manage Users</button>
-                        )}
-                        <button onClick={handleLogout} className="btn btn-danger">Logout</button>
-                    </div>
+        <div className="dashboard-container fade-in">
+            {/* Header */}
+            <div className="header" style={{ marginBottom: '28px' }}>
+                <div>
+                    <h2 className="card-title">Dashboard Overview</h2>
+                    <p className="text-muted">Monitor SEO meta tags, manage crawl frequencies, and view scrape history.</p>
                 </div>
+                <div className="header-actions">
+                    <button
+                        onClick={handleDownloadAll}
+                        disabled={downloadingAll || sites.length === 0}
+                        className="btn btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        title="Download aggregated CSV report for all tracked sites"
+                    >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        {downloadingAll ? 'Exporting...' : 'Download All Sites (CSV)'}
+                    </button>
+                </div>
+            </div>
 
-                {(roleId === 1 || roleId === 2) && (
-                    <div className="card fade-in">
-                        <h3 className="card-title">Fetch New Tags</h3>
-                        <p className="text-muted mb-4">Enter a URL to scrape its SEO meta tags and headings.</p>
-                        <form onSubmit={handleScrape} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                            <input
-                                type="url"
-                                className="form-input"
-                                placeholder="https://example.com"
-                                value={url}
-                                onChange={(e) => setUrl(e.target.value)}
-                                required
-                                style={{ flex: 2, minWidth: '240px' }}
-                            />
-                            <select
-                                className="form-input"
-                                value={cronHours}
-                                onChange={(e) => setCronHours(e.target.value)}
-                                style={{ flex: 1, minWidth: '180px', cursor: 'pointer' }}
-                            >
-                                <option value="">Manual Only</option>
-                                <option value="1">Every 1 hour</option>
-                                <option value="6">Every 6 hours</option>
-                                <option value="12">Every 12 hours</option>
-                                <option value="24">Every 24 hours (Daily)</option>
-                                <option value="168">Weekly (7 days)</option>
-                            </select>
-                            <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '140px' }}>
-                                {loading ? 'Scraping...' : 'Fetch Tags'}
-                            </button>
-                        </form>
-                        {error && <p className="text-danger mt-4">{error}</p>}
-                    </div>
-                )}
+            {/* Notification messages */}
+            {successMessage && (
+                <div className="notification-banner success mb-4">
+                    <span>{successMessage}</span>
+                    <button onClick={() => setSuccessMessage('')}>&times;</button>
+                </div>
+            )}
+            {error && (
+                <div className="notification-banner error mb-4">
+                    <span>{error}</span>
+                    <button onClick={() => setError('')}>&times;</button>
+                </div>
+            )}
 
+            {/* Add Website Form */}
+            {(roleId === 1 || roleId === 2) && (
                 <div className="card fade-in">
-                    <h3 className="card-title">All Tracked Websites</h3>
-                    <p className="text-muted mb-4">Click any website to view its scrape history thread in the side panel.</p>
+                    <h3 className="card-title">Track New Website</h3>
+                    <p className="text-muted mb-4">Enter a website URL and set its automated scraping interval.</p>
+                    <form onSubmit={handleScrape} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <input
+                            type="url"
+                            className="form-input"
+                            placeholder="https://example.com"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            required
+                            style={{ flex: 2, minWidth: '240px' }}
+                        />
+                        <select
+                            className="form-input"
+                            value={cronHours}
+                            onChange={(e) => setCronHours(e.target.value)}
+                            style={{ flex: 1, minWidth: '180px', cursor: 'pointer' }}
+                        >
+                            <option value="">Manual Only</option>
+                            <option value="1">Every 1 hour</option>
+                            <option value="6">Every 6 hours</option>
+                            <option value="12">Every 12 hours</option>
+                            <option value="24">Every 24 hours (Daily)</option>
+                            <option value="168">Weekly (7 days)</option>
+                        </select>
+                        <button type="submit" className="btn btn-primary" disabled={loading} style={{ minWidth: '140px' }}>
+                            {loading ? 'Scraping...' : 'Add & Fetch Tags'}
+                        </button>
+                    </form>
+                </div>
+            )}
 
-                    <div className="table-container">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Website URL</th>
-                                    <th>Auto-Scrape Schedule</th>
-                                    <th>Last Scraped</th>
-                                    <th>Next Run</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {sites.length > 0 ? sites.map((site) => (
-                                    <tr
-                                        key={site.id}
-                                        onClick={() => handleSiteClick(site)}
-                                        className={selectedSite?.id === site.id ? 'selected' : ''}
-                                        style={{ cursor: 'pointer' }}
-                                    >
-                                        <td>{site.id}</td>
-                                        <td>
-                                            <a href={site.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontWeight: 500 }}>
-                                                {site.url}
-                                            </a>
-                                        </td>
-                                        <td>
-                                            {(roleId === 1 || roleId === 2) ? (
-                                                <select
-                                                    value={site.cron_interval_hours || ''}
-                                                    onClick={e => e.stopPropagation()}
-                                                    onChange={e => handleScheduleChange(e, site.id)}
-                                                    className="form-input"
-                                                    style={{ padding: '6px 10px', fontSize: '13px', width: 'auto', cursor: 'pointer' }}
-                                                >
-                                                    <option value="">Manual Only</option>
-                                                    <option value="1">Every 1 hr</option>
-                                                    <option value="6">Every 6 hrs</option>
-                                                    <option value="12">Every 12 hrs</option>
-                                                    <option value="24">Every 24 hrs</option>
-                                                    <option value="168">Weekly (7d)</option>
-                                                </select>
-                                            ) : (
-                                                <span className="badge">
-                                                    {site.cron_interval_hours ? `Every ${site.cron_interval_hours}h` : 'Manual'}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="text-muted" style={{ fontSize: '13px' }}>
-                                            {site.last_scraped_at ? formatDateTime(site.last_scraped_at) : 'Never'}
-                                        </td>
-                                        <td className="text-muted" style={{ fontSize: '13px' }}>
-                                            {site.cron_interval_hours && site.next_scrape_at ? formatDateTime(site.next_scrape_at) : '-'}
-                                        </td>
-                                        <td>
-                                            {(roleId === 1 || roleId === 2) ? (
-                                                <div style={{ display: 'flex', gap: '8px' }}>
-                                                    <button
-                                                        onClick={(e) => handleScrapeSiteNow(e, site)}
-                                                        className="btn btn-secondary"
-                                                        style={{ padding: '6px 10px', fontSize: '12px' }}
-                                                        title="Scrape this website now"
-                                                    >
-                                                        Scrape Now
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => handleDeleteSite(e, site.id)}
-                                                        className="btn btn-danger"
-                                                        style={{ padding: '6px 10px', fontSize: '12px' }}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <span className="badge">View Only</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                )) : (
-                                    <tr>
-                                        <td colSpan="6" className="text-center text-muted" style={{ padding: '32px' }}>No websites tracked yet</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+            {/* Tracked Websites Table */}
+            <div className="card fade-in">
+                <div className="card-header-flex">
+                    <div>
+                        <h3 className="card-title">Tracked Websites</h3>
+                        <p className="text-muted" style={{ margin: 0, fontSize: '13px' }}>
+                            Click any row to open the full-page scrape history thread and tag inspector.
+                        </p>
                     </div>
+                    <span className="badge badge-secondary">{sites.length} Websites</span>
+                </div>
+
+                <div className="table-container">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Website URL</th>
+                                <th>Auto-Scrape Schedule</th>
+                                <th>Last Scraped</th>
+                                <th>Next Run</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sites.length > 0 ? sites.map((site) => (
+                                <tr
+                                    key={site.id}
+                                    onClick={() => handleSiteClick(site.id)}
+                                    style={{ cursor: 'pointer' }}
+                                    title="Click to view full scrape history thread"
+                                >
+                                    <td>#{site.id}</td>
+                                    <td>
+                                        <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                            {site.url}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {(roleId === 1 || roleId === 2) ? (
+                                            <select
+                                                value={site.cron_interval_hours || ''}
+                                                onClick={e => e.stopPropagation()}
+                                                onChange={e => handleScheduleChange(e, site.id)}
+                                                className="form-input"
+                                                style={{ padding: '6px 10px', fontSize: '13px', width: 'auto', cursor: 'pointer' }}
+                                            >
+                                                <option value="">Manual Only</option>
+                                                <option value="1">Every 1 hr</option>
+                                                <option value="6">Every 6 hrs</option>
+                                                <option value="12">Every 12 hrs</option>
+                                                <option value="24">Every 24 hrs</option>
+                                                <option value="168">Weekly (7d)</option>
+                                            </select>
+                                        ) : (
+                                            <span className="badge">
+                                                {site.cron_interval_hours ? `Every ${site.cron_interval_hours}h` : 'Manual'}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="text-muted" style={{ fontSize: '13px' }}>
+                                        {site.last_scraped_at ? formatDateTime(site.last_scraped_at) : 'Never'}
+                                    </td>
+                                    <td className="text-muted" style={{ fontSize: '13px' }}>
+                                        {site.cron_interval_hours && site.next_scrape_at ? formatDateTime(site.next_scrape_at) : '-'}
+                                    </td>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            {(roleId === 1 || roleId === 2) && (
+                                                <button
+                                                    onClick={(e) => handleScrapeSiteNow(e, site)}
+                                                    className="btn btn-secondary"
+                                                    style={{ padding: '6px 10px', fontSize: '12px' }}
+                                                    title="Scrape this website now"
+                                                >
+                                                    Scrape Now
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={(e) => handleDownloadSiteReport(e, site.id, site.url)}
+                                                disabled={downloadingSiteId === site.id}
+                                                className="btn btn-secondary"
+                                                style={{ padding: '6px 10px', fontSize: '12px' }}
+                                                title="Download complete history for this site in CSV"
+                                            >
+                                                CSV
+                                            </button>
+                                            {(roleId === 1 || roleId === 2) && (
+                                                <button
+                                                    onClick={(e) => handleDeleteSite(e, site.id)}
+                                                    className="btn btn-danger"
+                                                    style={{ padding: '6px 10px', fontSize: '12px' }}
+                                                    title="Delete site"
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="6" className="text-center text-muted" style={{ padding: '36px' }}>
+                                        No websites tracked yet. Add a website URL above.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-
-
-            {/* Side Panel Overlay */}
-            <div className={`side-panel-overlay ${selectedSite ? 'open' : ''}`} onClick={closeSidePanel}></div>
-
-            {/* Sliding Side Panel */}
-            <div className={`side-panel ${selectedSite ? 'open' : ''}`}>
-                {selectedSite && (
-                    <>
-                        <div className="side-panel-header">
-                            <div>
-                                <h3 className="card-title" style={{ color: 'var(--accent-color)' }}>{selectedSite.url}</h3>
-                                <p className="text-muted">Scrape History Thread</p>
-                            </div>
-                            <button className="close-btn" onClick={closeSidePanel}>&times;</button>
-                        </div>
-
-                        <div className="side-panel-content">
-                            <p className="text-muted mb-4">Click any run below to view the exact tags extracted on that date.</p>
-
-                            <div className="table-container" style={{ marginTop: 0, marginBottom: '24px' }}>
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Run ID</th>
-                                            <th>Status</th>
-                                            <th>Scraped Date</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {siteScrapes.length > 0 ? siteScrapes.map((run) => (
-                                            <tr
-                                                key={run.id}
-                                                onClick={() => handleRunClick(run.id)}
-                                                style={{ cursor: 'pointer' }}
-                                            >
-                                                <td>{run.id}</td>
-                                                <td>
-                                                    <span className={`badge ${run.status === 'completed' ? 'badge-success' : 'badge-warning'}`}>
-                                                        {run.status.toUpperCase()}
-                                                    </span>
-                                                </td>
-                                                <td className="text-muted" style={{ fontSize: '13px' }}>
-                                                    {formatDateTime(run.started_at)}
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan="3" className="text-center text-muted" style={{ padding: '32px' }}>No scrape history found for this site.</td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            {/* Show specific tags inside the side panel when a run is clicked */}
-                            {results && (
-                                <div className="fade-in" style={{ padding: '20px', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: '#000' }}>
-                                    <h4 className="card-title mb-4" style={{ fontSize: '16px' }}>Extracted Tags</h4>
-
-                                    <div className="form-group">
-                                        <span className="form-label">Meta Title</span>
-                                        <div style={{ color: 'var(--text-primary)', background: 'var(--surface-color)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                            {results.meta_title || 'N/A'}
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <span className="form-label">Meta Description</span>
-                                        <div style={{ color: 'var(--text-primary)', background: 'var(--surface-color)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                            {results.meta_description || 'N/A'}
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <span className="form-label">Meta Keywords</span>
-                                        <div style={{ color: 'var(--text-primary)', background: 'var(--surface-color)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                            {results.meta_keywords || 'N/A'}
-                                        </div>
-                                    </div>
-
-                                    <h4 className="card-title mt-8" style={{ fontSize: '16px' }}>H1 Headings</h4>
-                                    <ul className="tag-list">
-                                        {results.headings?.h1?.length > 0 ? results.headings.h1.map((h1, index) => <li key={index}>{h1}</li>) : <li style={{ color: 'var(--text-secondary)' }}>No h1 tags found</li>}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
-        </>
+        </div>
     );
 }

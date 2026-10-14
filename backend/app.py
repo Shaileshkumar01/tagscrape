@@ -1,7 +1,9 @@
+import csv
+import io
 import json
 import os
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, g, jsonify, request
+from flask import Flask, Response, g, jsonify, request
 from flask_cors import CORS
 from auth import login_user, require_auth
 from db import (
@@ -14,15 +16,18 @@ from db import (
     get_all_users,
     get_db_connection,
     get_due_sites,
+    get_report_data,
     get_scrape_details,
     get_scrape_history,
     get_scrapes_for_site,
+    get_site_by_id,
     get_unique_sites,
     get_user_assigned_site_ids,
     record_site_scraped,
     save_scrape_results,
     update_site_schedule,
     update_user_password,
+    update_user_profile,
 )
 from scraper import scrape_website
 
@@ -122,6 +127,17 @@ def get_past_scrape(run_id):
 def get_sites():
     sites = get_unique_sites(user_id=g.user_id, role_id=g.role_id)
     return jsonify(sites), 200
+
+
+@app.route('/api/sites/<int:website_id>', methods=['GET'])
+@require_auth()
+def get_single_site(website_id):
+    if not can_user_access_site(g.user_id, g.role_id, website_id):
+        return jsonify({'message': 'Access denied to this site'}), 403
+    site = get_site_by_id(website_id)
+    if not site:
+        return jsonify({'message': 'Website not found'}), 404
+    return jsonify(site), 200
 
 
 @app.route('/api/sites/<int:website_id>/scrapes', methods=['GET'])
@@ -235,6 +251,28 @@ def remove_user(user_id):
         return jsonify({'message': message}), 400
 
 
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@require_auth(roles=[1])
+def edit_user(user_id):
+    data = request.get_json() or {}
+    name = data.get('name')
+    email = data.get('email')
+    role_id = data.get('role_id')
+    password = data.get('password')
+    site_ids = data.get('site_ids')
+
+    success, msg = update_user_profile(
+        user_id, name=name, email=email, role_id=role_id, password=password
+    )
+    if not success:
+        return jsonify({'message': msg}), 400
+
+    if site_ids is not None and isinstance(site_ids, list):
+        assign_user_sites(user_id, site_ids)
+
+    return jsonify({'message': 'User profile updated successfully'}), 200
+
+
 @app.route('/api/users/<int:user_id>/password', methods=['PUT'])
 @require_auth(roles=[1])
 def update_password(user_id):
@@ -264,6 +302,62 @@ def set_user_sites(user_id):
     if success:
         return jsonify({'message': msg}), 200
     return jsonify({'message': msg}), 400
+
+
+# ==============================================================================
+# Scrape History Reports (CSV Exports)
+# ==============================================================================
+
+def build_csv_response(rows, filename):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Run ID", "Website URL", "Scraped At (UTC)", "Status", "Tag Type", "Tag Name", "Content"])
+    for r in rows:
+        started = r.get("started_at")
+        started_str = started.isoformat() if hasattr(started, "isoformat") else str(started or "")
+        writer.writerow([
+            r.get("run_id"),
+            r.get("website_url"),
+            started_str,
+            r.get("run_status") or "completed",
+            r.get("tag_type") or "",
+            r.get("tag_name") or "",
+            r.get("content") or ""
+        ])
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.route('/api/scrape/<int:run_id>/report', methods=['GET'])
+@require_auth()
+def download_run_report(run_id):
+    details = get_scrape_details(run_id)
+    if not details:
+        return jsonify({'message': 'Run not found'}), 404
+    if not can_user_access_site(g.user_id, g.role_id, details['website_id']):
+        return jsonify({'message': 'Access denied to this site'}), 403
+    rows = get_report_data(run_id=run_id)
+    return build_csv_response(rows, f"scrape_run_{run_id}_report.csv")
+
+
+@app.route('/api/sites/<int:website_id>/report', methods=['GET'])
+@require_auth()
+def download_site_report(website_id):
+    if not can_user_access_site(g.user_id, g.role_id, website_id):
+        return jsonify({'message': 'Access denied to this site'}), 403
+    rows = get_report_data(website_id=website_id)
+    return build_csv_response(rows, f"site_{website_id}_history_report.csv")
+
+
+@app.route('/api/reports/all', methods=['GET'])
+@require_auth()
+def download_all_reports():
+    rows = get_report_data(user_id=g.user_id, role_id=g.role_id)
+    return build_csv_response(rows, "all_sites_scrape_report.csv")
 
 
 # ==============================================================================
