@@ -2,7 +2,7 @@ import { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/authcontext";
 import { formatDateTime, formatDateOnly } from "../utils/date";
-import { API_BASE_URL } from "../config";
+import { apiFetch } from "../utils/api";
 
 export default function Dashboard() {
     const { logout, roleId } = useContext(AuthContext);
@@ -18,7 +18,7 @@ export default function Dashboard() {
 
     const fetchSites = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/sites`);
+            const response = await apiFetch('/api/sites');
             if (response.ok) {
                 const data = await response.json();
                 setSites(data);
@@ -32,7 +32,7 @@ export default function Dashboard() {
         setSelectedSite(site);
         setResults(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/sites/${site.id}/scrapes`);
+            const response = await apiFetch(`/api/sites/${site.id}/scrapes`);
             if (response.ok) {
                 const data = await response.json();
                 setSiteScrapes(data);
@@ -44,7 +44,7 @@ export default function Dashboard() {
 
     const handleRunClick = async (runId) => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/scrape/${runId}`);
+            const response = await apiFetch(`/api/scrape/${runId}`);
             if (response.ok) {
                 const data = await response.json();
                 setResults(data);
@@ -65,7 +65,7 @@ export default function Dashboard() {
         if (!window.confirm("Are you sure you want to delete this site and all its history?")) return;
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/sites/${id}`, {
+            const response = await apiFetch(`/api/sites/${id}`, {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -94,10 +94,9 @@ export default function Dashboard() {
         setResults(null);
         setLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/scrape`, {
+            const response = await apiFetch('/api/scrape', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url })
+                body: { url }
             });
             const data = await response.json();
             if (response.ok) {

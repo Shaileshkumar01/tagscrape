@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateOnly } from '../utils/date';
-import { API_BASE_URL } from '../config';
+import { apiFetch } from '../utils/api';
 
 export default function Admin() {
     const [users, setUsers] = useState([]);
@@ -16,7 +16,7 @@ export default function Admin() {
 
     const fetchUsers = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users`);
+            const response = await apiFetch('/api/users');
             if (response.ok) {
                 const data = await response.json();
                 setUsers(data);
@@ -28,7 +28,7 @@ export default function Admin() {
 
     const fetchCron = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/cron`);
+            const response = await apiFetch('/api/cron');
             if (response.ok) {
                 const data = await response.json();
                 setIntervalHours(data.interval_hours);
@@ -46,14 +46,10 @@ export default function Admin() {
     const handleCreateUser = async (e) => {
         e.preventDefault();
         try {
-            const response = await fetch(
-                `${API_BASE_URL}/api/users`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, role_id: roleId })
-                }
-            );
+            const response = await apiFetch('/api/users', {
+                method: 'POST',
+                body: { email, password, role_id: roleId }
+            });
             const data = await response.json();
             if (response.ok) {
                 setMessage('User created successfully!');
@@ -72,7 +68,7 @@ export default function Admin() {
     const handleDeleteUser = async (id) => {
         if (!window.confirm("Are you sure you want to delete this user?")) return;
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users/${id}`, {
+            const response = await apiFetch(`/api/users/${id}`, {
                 method: 'DELETE'
             });
             if (response.ok) {
@@ -90,10 +86,9 @@ export default function Admin() {
         const newPassword = window.prompt("enter new password for this user");
         if (!newPassword) return;
         try {
-            const response = await fetch(`${API_BASE_URL}/api/users/${id}/password`, {
+            const response = await apiFetch(`/api/users/${id}/password`, {
                 method: "PUT",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: newPassword })
+                body: { password: newPassword }
             });
             const data = await response.json();
             if (response.ok) {
@@ -111,10 +106,9 @@ export default function Admin() {
         e.preventDefault();
         setCronMessage('');
         try {
-            const response = await fetch(`${API_BASE_URL}/api/cron`, {
+            const response = await apiFetch('/api/cron', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ interval_hours: Number(intervalHours) })
+                body: { interval_hours: Number(intervalHours) }
             });
             const data = await response.json();
             if (response.ok) {
@@ -131,7 +125,7 @@ export default function Admin() {
         setTriggering(true);
         setCronMessage('');
         try {
-            const response = await fetch(`${API_BASE_URL}/api/cron/trigger`, {
+            const response = await apiFetch('/api/cron/trigger', {
                 method: 'POST'
             });
             const data = await response.json();
