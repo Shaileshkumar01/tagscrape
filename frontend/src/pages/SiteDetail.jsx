@@ -19,7 +19,6 @@ export default function SiteDetail() {
     const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
-    const [activeTab, setActiveTab] = useState('meta');
 
     const fetchSiteInfo = async () => {
         try {
@@ -388,137 +387,57 @@ export default function SiteDetail() {
                                     Download CSV
                                 </button>
                             </div>
-
-                            {/* Inspector Navigation Tabs */}
-                            <div className="inspector-tabs">
-                                <button
-                                    type="button"
-                                    className={`inspector-tab-btn ${activeTab === 'meta' ? 'active' : ''}`}
-                                    onClick={() => setActiveTab('meta')}
-                                >
-                                    SEO & Meta Tags
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`inspector-tab-btn ${activeTab === 'headings' ? 'active' : ''}`}
-                                    onClick={() => setActiveTab('headings')}
-                                >
-                                    Headings ({
-                                        runDetails.headings 
-                                            ? Object.values(runDetails.headings).reduce((acc, l) => acc + (l?.length || 0), 0)
-                                            : 0
-                                    })
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`inspector-tab-btn ${activeTab === 'raw' ? 'active' : ''}`}
-                                    onClick={() => setActiveTab('raw')}
-                                >
-                                    All Tags Table ({runDetails.all_tags?.length || 0})
-                                </button>
+                            {/* Page Title */}
+                            <div className="inspector-section">
+                                <label className="form-label" style={{ fontWeight: 600, color: 'var(--accent-color)' }}>
+                                    Page Title (&lt;title&gt;)
+                                </label>
+                                <div className="tag-content-box" style={{ fontWeight: 500 }}>
+                                    {runDetails.title || <span className="text-muted">Not Found</span>}
+                                </div>
                             </div>
 
-                            {/* Tab 1: SEO & Meta Tags */}
-                            {activeTab === 'meta' && (
-                                <div className="fade-in">
-                                    <div className="inspector-section">
-                                        <label className="form-label" style={{ fontWeight: 600, color: 'var(--accent-color)' }}>
-                                            Page Title (&lt;title&gt;)
-                                        </label>
-                                        <div className="tag-content-box" style={{ fontWeight: 500 }}>
-                                            {runDetails.title || <span className="text-muted">Not Found</span>}
-                                        </div>
-                                    </div>
-
-                                    <div className="inspector-section">
-                                        <label className="form-label">Meta Title (name/og/twitter)</label>
-                                        <div className="tag-content-box">
-                                            {runDetails.meta_title || <span className="text-muted">Not Found</span>}
-                                        </div>
-                                    </div>
-
-                                    <div className="inspector-section">
-                                        <label className="form-label">Meta Description</label>
-                                        <div className="tag-content-box">
-                                            {runDetails.meta_description || <span className="text-muted">Not Found</span>}
-                                        </div>
-                                    </div>
-
-                                    <div className="inspector-section">
-                                        <label className="form-label">Meta Keywords</label>
-                                        <div className="tag-content-box">
-                                            {runDetails.meta_keywords || <span className="text-muted">Not Found</span>}
-                                        </div>
-                                    </div>
+                            {/* Meta Title */}
+                            <div className="inspector-section">
+                                <label className="form-label">Meta Title</label>
+                                <div className="tag-content-box">
+                                    {runDetails.meta_title || <span className="text-muted">Not Found</span>}
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Tab 2: All Headings (H1 to H6) */}
-                            {activeTab === 'headings' && (
-                                <div className="fade-in">
-                                    {['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((level) => {
-                                        const list = runDetails.headings?.[level] || [];
-                                        if (list.length === 0) return null;
-                                        return (
-                                            <div className="inspector-section" key={level}>
-                                                <label className="form-label" style={{ textTransform: 'uppercase', color: 'var(--accent-color)' }}>
-                                                    {level} Headings ({list.length})
-                                                </label>
-                                                <ul className="tag-list">
-                                                    {list.map((h, i) => (
-                                                        <li key={i}>{h}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        );
-                                    })}
-                                    {(!runDetails.headings || Object.values(runDetails.headings).every(l => !l || l.length === 0)) && (
-                                        <div className="tag-content-box text-muted">
-                                            No headings (H1–H6) found on this page.
-                                        </div>
-                                    )}
+                            {/* Meta Description */}
+                            <div className="inspector-section">
+                                <label className="form-label">Meta Description</label>
+                                <div className="tag-content-box">
+                                    {runDetails.meta_description || <span className="text-muted">Not Found</span>}
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Tab 3: All Extracted Tags Table */}
-                            {activeTab === 'raw' && (
-                                <div className="fade-in table-container" style={{ maxHeight: '450px', overflowY: 'auto', marginTop: 0 }}>
-                                    <table className="data-table raw-tags-table">
-                                        <thead>
-                                            <tr>
-                                                <th style={{ width: '40px' }}>#</th>
-                                                <th style={{ width: '110px' }}>Tag Name</th>
-                                                <th style={{ width: '90px' }}>Type</th>
-                                                <th>Content</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {runDetails.all_tags?.length > 0 ? (
-                                                runDetails.all_tags.map((t, idx) => (
-                                                    <tr key={idx}>
-                                                        <td className="text-muted">{idx + 1}</td>
-                                                        <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{t.tag_name}</td>
-                                                        <td>
-                                                            <span className="badge badge-secondary" style={{ fontSize: '11px', padding: '2px 8px' }}>
-                                                                {t.tag_type}
-                                                            </span>
-                                                        </td>
-                                                        <td style={{ wordBreak: 'break-word', color: 'var(--text-primary)', fontSize: '13px' }}>
-                                                            {t.content}
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan="4" className="text-center text-muted" style={{ padding: '24px' }}>
-                                                        No tag records available.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                            {/* Meta Keywords */}
+                            <div className="inspector-section">
+                                <label className="form-label">Meta Keywords</label>
+                                <div className="tag-content-box">
+                                    {runDetails.meta_keywords || <span className="text-muted">Not Found</span>}
                                 </div>
-                            )}
+                            </div>
+
+                            {/* H1 Headings */}
+                            <div className="inspector-section">
+                                <label className="form-label">
+                                    H1 Headings ({runDetails.headings?.h1?.length || 0})
+                                </label>
+                                {runDetails.headings?.h1?.length > 0 ? (
+                                    <ul className="tag-list">
+                                        {runDetails.headings.h1.map((h, i) => (
+                                            <li key={i}>{h}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="tag-content-box text-muted">
+                                        No H1 tags found
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <div className="inspector-empty">
