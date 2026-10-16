@@ -4,24 +4,18 @@ from bs4 import BeautifulSoup
 def scrape_website(url):
     data = {
         "title": None,
-        "meta_title":None,
-        "meta_description":None,
-        "meta_keywords":None,
-        "headings":{
-            "h1":[],
-            "h2":[],
-            "h3":[],
-            "h4":[],
-            "h5":[],
-            "h6":[]
+        "meta_title": None,
+        "meta_description": None,
+        "meta_keywords": None,
+        "headings": {
+            "h1": []
         }
-        
     }
     try:
-        headers= {
+        headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
-        response=requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -56,10 +50,10 @@ def scrape_website(url):
         if meta_keywords and meta_keywords.get("content"):
             data["meta_keywords"] = meta_keywords.get("content").strip()
 
-        for i in range(1, 7):
-            headings = soup.find_all(f"h{i}")
-            data["headings"][f"h{i}"] = [heading.get_text(strip=True) for heading in headings if heading.get_text(strip=True)]
-        
+        # Headings: only H1
+        headings = soup.find_all("h1")
+        data["headings"]["h1"] = [heading.get_text(strip=True) for heading in headings if heading.get_text(strip=True)]
+
         return data, None
 
     except Exception as e:
