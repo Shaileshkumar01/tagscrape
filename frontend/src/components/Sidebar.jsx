@@ -28,13 +28,7 @@ export default function Sidebar({ isOpen, onClose }) {
             <aside className={`app-sidebar ${isOpen ? 'open' : ''}`}>
                 {/* Brand / Logo */}
                 <div className="sidebar-brand">
-                    <div className="brand-logo">
-                        <span>TF</span>
-                    </div>
-                    <div className="brand-info">
-                        <span className="brand-title">Tag Fetcher</span>
-                        <span className="brand-badge">v2.0</span>
-                    </div>
+                    <span className="brand-title">Tag Fetcher</span>
                     {onClose && (
                         <button className="sidebar-close-mobile" onClick={onClose} title="Close menu">
                             ✕
