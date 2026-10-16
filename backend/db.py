@@ -146,17 +146,24 @@ def get_scrape_details(run_id):
         if not run_info:
             return None
 
-        cursor.execute("SELECT tag_name, content FROM scraped_tags WHERE scrape_run_id = %s", (run_id,))
+        cursor.execute("SELECT tag_name, tag_type, content FROM scraped_tags WHERE scrape_run_id = %s ORDER BY id ASC", (run_id,))
         tags = cursor.fetchall()
+
+        headings = {}
+        for i in range(1, 7):
+            tag_key = f"h{i}"
+            headings[tag_key] = [t['content'] for t in tags if t['tag_name'] == tag_key]
+
         results = {
             'run_id': run_id,
             'website_id': run_info['website_id'],
             'url': run_info['url'],
-            'title': next((t['content'] for t in tags if t['tag_name'] == 'title'), None) or run_info['url'],
+            'title': next((t['content'] for t in tags if t['tag_name'] == 'title'), None),
             'meta_title': next((t['content'] for t in tags if t['tag_name'] == 'meta_title'), None),
             'meta_description': next((t['content'] for t in tags if t['tag_name'] == 'meta_description'), None),
             'meta_keywords': next((t['content'] for t in tags if t['tag_name'] == 'meta_keywords'), None),
-            'headings': {'h1': [t['content'] for t in tags if t['tag_name'] == 'h1']},
+            'headings': headings,
+            'all_tags': tags,
             'started_at': run_info['started_at']
         }
         return results

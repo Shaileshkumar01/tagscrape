@@ -25,20 +25,40 @@ def scrape_website(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.content, "html.parser")
 
-        data["title"] = soup.title.string if soup.title else None
+        # Page Title tag
+        data["title"] = soup.title.get_text(strip=True) if soup.title else None
 
-        meta_title = soup.find("meta", attrs={"name": "title"})
-        data["meta_title"] = meta_title.get("content") if meta_title else None
+        # Meta title: check standard name, OpenGraph, Twitter
+        meta_title = (
+            soup.find("meta", attrs={"name": "title"}) or
+            soup.find("meta", attrs={"property": "og:title"}) or
+            soup.find("meta", attrs={"name": "og:title"}) or
+            soup.find("meta", attrs={"name": "twitter:title"})
+        )
+        if meta_title and meta_title.get("content"):
+            data["meta_title"] = meta_title.get("content").strip()
 
-        meta_description = soup.find("meta", attrs={"name": "description"})
-        data["meta_description"] = meta_description.get("content") if meta_description else None
+        # Meta description: check standard name, OpenGraph, Twitter
+        meta_description = (
+            soup.find("meta", attrs={"name": "description"}) or
+            soup.find("meta", attrs={"property": "og:description"}) or
+            soup.find("meta", attrs={"name": "og:description"}) or
+            soup.find("meta", attrs={"name": "twitter:description"})
+        )
+        if meta_description and meta_description.get("content"):
+            data["meta_description"] = meta_description.get("content").strip()
 
-        meta_keywords = soup.find("meta", attrs={"name": "keywords"})
-        data["meta_keywords"] = meta_keywords.get("content") if meta_keywords else None
+        # Meta keywords: check standard name and OpenGraph
+        meta_keywords = (
+            soup.find("meta", attrs={"name": "keywords"}) or
+            soup.find("meta", attrs={"property": "og:keywords"})
+        )
+        if meta_keywords and meta_keywords.get("content"):
+            data["meta_keywords"] = meta_keywords.get("content").strip()
 
         for i in range(1, 7):
             headings = soup.find_all(f"h{i}")
-            data["headings"][f"h{i}"] = [heading.get_text(strip=True) for heading in headings]
+            data["headings"][f"h{i}"] = [heading.get_text(strip=True) for heading in headings if heading.get_text(strip=True)]
         
         return data, None
 
