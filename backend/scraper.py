@@ -8,7 +8,12 @@ def scrape_website(url):
         "meta_description": None,
         "meta_keywords": None,
         "headings": {
-            "h1": []
+            "h1": [],
+            "h2": [],
+            "h3": [],
+            "h4": [],
+            "h5": [],
+            "h6": []
         }
     }
     try:
@@ -50,9 +55,13 @@ def scrape_website(url):
         if meta_keywords and meta_keywords.get("content"):
             data["meta_keywords"] = meta_keywords.get("content").strip()
 
-        # Headings: only H1
-        headings = soup.find_all("h1")
-        data["headings"]["h1"] = [heading.get_text(strip=True) for heading in headings if heading.get_text(strip=True)]
+        # Headings: H1 through H6
+        for i in range(1, 7):
+            level = f"h{i}"
+            tag_matches = soup.find_all(level)
+            data["headings"][level] = [
+                h.get_text(strip=True) for h in tag_matches if h.get_text(strip=True)
+            ]
 
         return data, None
 
