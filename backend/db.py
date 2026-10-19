@@ -149,7 +149,10 @@ def get_scrape_details(run_id):
         cursor.execute("SELECT tag_name, tag_type, content FROM scraped_tags WHERE scrape_run_id = %s ORDER BY id ASC", (run_id,))
         tags = cursor.fetchall()
 
-        h1_list = [t['content'] for t in tags if t['tag_name'] == 'h1']
+        headings = {}
+        for i in range(1, 7):
+            tag_key = f"h{i}"
+            headings[tag_key] = [t['content'] for t in tags if t['tag_name'] == tag_key]
 
         results = {
             'run_id': run_id,
@@ -159,7 +162,7 @@ def get_scrape_details(run_id):
             'meta_title': next((t['content'] for t in tags if t['tag_name'] == 'meta_title'), None),
             'meta_description': next((t['content'] for t in tags if t['tag_name'] == 'meta_description'), None),
             'meta_keywords': next((t['content'] for t in tags if t['tag_name'] == 'meta_keywords'), None),
-            'headings': {'h1': h1_list},
+            'headings': headings,
             'started_at': run_info['started_at']
         }
         return results
@@ -320,7 +323,10 @@ def check_if_data_changed(url, new_data):
             'meta_title': next((t['content'] for t in tags if t['tag_name'] == 'meta_title'), None),
             'meta_description': next((t['content'] for t in tags if t['tag_name'] == 'meta_description'), None),
             'meta_keywords': next((t['content'] for t in tags if t['tag_name'] == 'meta_keywords'), None),
-            'headings': {'h1': [t['content'] for t in tags if t['tag_name'] == 'h1']}
+            'headings': {
+                f"h{i}": [t['content'] for t in tags if t['tag_name'] == f"h{i}"]
+                for i in range(1, 7)
+            }
         }
 
         if old_data['title'] != new_data.get('title'):
@@ -332,10 +338,13 @@ def check_if_data_changed(url, new_data):
         if old_data['meta_keywords'] != new_data.get('meta_keywords'):
             return True
 
-        old_h1s = old_data['headings'].get('h1', [])
-        new_h1s = new_data.get('headings', {}).get('h1', [])
-        if sorted(old_h1s) != sorted(new_h1s):
-            return True
+        new_headings = new_data.get('headings', {})
+        for i in range(1, 7):
+            level = f"h{i}"
+            old_list = old_data['headings'].get(level, [])
+            new_list = new_headings.get(level, [])
+            if sorted(old_list) != sorted(new_list):
+                return True
 
         return False
     finally:

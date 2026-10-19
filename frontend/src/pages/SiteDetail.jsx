@@ -438,6 +438,24 @@ export default function SiteDetail() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Additional Headings (H2 through H6) */}
+                            {['h2', 'h3', 'h4', 'h5', 'h6'].map((level) => {
+                                const list = runDetails.headings?.[level] || [];
+                                if (list.length === 0) return null;
+                                return (
+                                    <div className="inspector-section" key={level}>
+                                        <label className="form-label">
+                                            {level.toUpperCase()} Headings ({list.length})
+                                        </label>
+                                        <ul className="tag-list">
+                                            {list.map((h, i) => (
+                                                <li key={i}>{h}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="inspector-empty">
