@@ -292,6 +292,18 @@ def delete_site_by_id(website_id):
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM websites WHERE id = %s", (website_id,))
+
+        # Check remaining sites
+        cursor.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM websites")
+        count, max_id = cursor.fetchone()
+        if count == 0:
+            # If all websites are deleted, reset AUTO_INCREMENT to 1
+            cursor.execute("ALTER TABLE websites AUTO_INCREMENT = 1")
+            cursor.execute("ALTER TABLE scrape_runs AUTO_INCREMENT = 1")
+            cursor.execute("ALTER TABLE scraped_tags AUTO_INCREMENT = 1")
+        else:
+            cursor.execute(f"ALTER TABLE websites AUTO_INCREMENT = {max_id + 1}")
+
         conn.commit()
         return True, "Site deleted successfully"
     except mysql.connector.Error as err:
