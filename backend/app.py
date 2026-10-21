@@ -1,4 +1,5 @@
 import csv
+import hmac
 import io
 import json
 import os
@@ -16,6 +17,7 @@ from db import (
     get_all_users,
     get_db_connection,
     get_due_sites,
+    get_latest_chatbot_site_snapshots,
     get_report_data,
     get_scrape_details,
     get_scrape_history,
@@ -358,6 +360,32 @@ def download_site_report(website_id):
 def download_all_reports():
     rows = get_report_data(user_id=g.user_id, role_id=g.role_id)
     return build_csv_response(rows, "all_sites_scrape_report.csv")
+
+
+@app.route('/api/integrations/chatbot/sites', methods=['GET'])
+def get_chatbot_site_snapshots():
+    expected_token = os.getenv("CHATBOT_SYNC_TOKEN")
+    if not expected_token:
+        return jsonify({"message": "Chatbot sync integration is not configured"}), 503
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"message": "Service authorization required"}), 401
+
+    provided_token = auth_header.removeprefix("Bearer ").strip()
+    if not hmac.compare_digest(provided_token, expected_token):
+        return jsonify({"message": "Invalid service authorization"}), 401
+
+    sites = get_latest_chatbot_site_snapshots()
+    if sites is None:
+        return jsonify({"message": "Tag data is temporarily unavailable"}), 503
+
+    response = jsonify({
+        "count": len(sites),
+        "sites": sites,
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
 
 
 # ==============================================================================

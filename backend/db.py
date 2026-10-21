@@ -1,6 +1,7 @@
 import os
 import mysql.connector
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 from werkzeug.security import generate_password_hash
 
 load_dotenv()
@@ -280,6 +281,67 @@ def get_scrapes_for_site(website_id):
             (website_id,)
         )
         return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_latest_chatbot_site_snapshots():
+    conn = get_db_connection()
+    if not conn:
+        return None
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT
+                w.id AS website_id,
+                w.url AS website_url,
+                sr.id AS scrape_run_id,
+                sr.started_at AS scraped_at,
+                st.page_url,
+                st.tag_name,
+                st.tag_type,
+                st.content
+            FROM websites w
+            JOIN (
+                SELECT website_id, MAX(id) AS latest_run_id
+                FROM scrape_runs
+                WHERE status = 'completed'
+                GROUP BY website_id
+            ) latest ON latest.website_id = w.id
+            JOIN scrape_runs sr ON sr.id = latest.latest_run_id
+            LEFT JOIN scraped_tags st ON st.scrape_run_id = sr.id
+            ORDER BY w.id ASC, st.id ASC
+        """)
+
+        sites_by_id = {}
+        for row in cursor.fetchall():
+            website_url = row["website_url"]
+            hostname = (urlparse(website_url).hostname or "").lower()
+            if hostname != "hlpnow.com" and not hostname.endswith(".hlpnow.com"):
+                continue
+
+            website_id = row["website_id"]
+            if website_id not in sites_by_id:
+                scraped_at = row["scraped_at"]
+                sites_by_id[website_id] = {
+                    "website_id": website_id,
+                    "url": website_url,
+                    "scrape_run_id": row["scrape_run_id"],
+                    "scraped_at": scraped_at.isoformat() if scraped_at else None,
+                    "tags": [],
+                }
+
+            if row["tag_name"] and row["content"]:
+                sites_by_id[website_id]["tags"].append({
+                    "page_url": row["page_url"],
+                    "tag_name": row["tag_name"],
+                    "tag_type": row["tag_type"],
+                    "content": row["content"],
+                })
+
+        return list(sites_by_id.values())
     finally:
         cursor.close()
         conn.close()
